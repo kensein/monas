@@ -1,99 +1,70 @@
 # NWP Verification Dashboard
 
-Dashboard interaktif verifikasi model NWP (**InaNWP**, **InaCAWO**, **GFS**, **IFS**) terhadap observasi sinoptik stasiun BMKG, mengikuti metodologi **HARP** point verification.
+Dashboard **display-only** — user tidak perlu upload file model.
+Model NC di-sync otomatis dari server **litbangweb** (`/opt/lampp/htdocs/wrf/wrfout/`).
+
+## Arsitektur
+
+```
+litbangweb server
+├── /opt/lampp/htdocs/wrf/wrfout/*.nc     ← model auto-update (InaNWP asim, dll)
+├── /opt/lampp/htdocs/monas/nwp-verify/   ← dashboard (deploy di sini)
+└── pipeline (background, tiap 1 jam):
+    scan NC baru → interpolasi ke stasiun → HARP verify → simpan skor → tampil di UI
+```
+
+User hanya melihat hasil verifikasi HARP: **D+0 (analysis)** sampai **D+7** (168 jam).
+
+## Deploy di litbangweb (sama seperti psiidn)
+
+```bash
+chmod +x deploy_litbangweb.sh
+./deploy_litbangweb.sh
+```
+
+Lalu di server:
+```bash
+cd /opt/lampp/htdocs/monas/nwp-verify
+# Edit .env — isi BMKG_PASSWORD
+./start.sh
+```
+
+Dashboard: http://202.90.199.54:3013 (atau port yang dibuka)
 
 ## Port
 
 | Service | Port |
 |---------|------|
-| Frontend (UI) | **3013** |
-| Backend API | **8013** |
+| Frontend | **3013** |
+| API | **8013** |
 
-## Menjalankan
+## Kenapa Cloud Agent tidak bisa akses C:\ lokal?
 
-```bash
-cp .env.example .env   # edit username/password
-pip install -r requirements.txt
-chmod +x start.sh
-./start.sh
+| Agent | Berjalan di | Akses file lokal |
+|-------|-------------|------------------|
+| **Cloud Agent** (ini) | VM Linux remote Cursor | ❌ Tidak bisa `C:\Users\...` |
+| **Local Agent / psiidn** | Komputer Anda langsung | ✅ Bisa akses semua file lokal |
+
+File NC 11GB Anda **sudah ada di litbangweb**:
+```
+/opt/lampp/htdocs/wrf/wrfout/2026070112-d01-asim.nc  (12 GB)
 ```
 
-Buka: http://localhost:3013
+Dashboard deploy di litbangweb membaca path itu **langsung** — sama seperti `psiidn_export` yang baca `--input /opt/lampp/htdocs/wrf/wrfout`.
 
----
+## Fetch Observasi (BMKG API POST)
 
-## File NC 11GB — Gunakan Path Lokal
+Token auto-refresh ~47 jam. Pipeline backend fetch observasi otomatis saat di jaringan BMKG.
 
-Browser **tidak bisa** upload file 11GB. Jalankan `./start.sh` di **komputer Windows** yang punya file, lalu:
-
-1. Isi path: `C:\Users\husei\Downloads\2026070112-d01-asim.nc`
-2. Klik **Muat dari Path Lokal**
-
-Atau set di `.env`:
 ```
-LOCAL_NC_PATH=C:\Users\husei\Downloads\2026070112-d01-asim.nc
-```
-Lalu klik **Muat LOCAL_NC_PATH (.env)**
-
-Drag & drop hanya untuk file **< 2GB**.
-
----
-
-## Fetch Observasi Sinoptik (BMKG API)
-
-Sesuai PPTX **API Export Sinoptik (search api)**:
-
-| Step | Method | URL |
-|------|--------|-----|
-| 1. Login | **POST** | `https://bmkgsatu.bmkg.go.id/api/v21/user/session/login` |
-| 2. Export | **POST** | `https://bmkgsatu.bmkg.go.id/api/v21/export/observation/by-station/query` |
-
-Body export (semua parameter):
-```json
-{
-  "data_type": "sinoptik",
-  "parameter_names": ["*"],
-  "station_wmo_ids": ["*"],
-  "date_from": "2025-06-01T00:00:00Z",
-  "date_to": "2025-06-03T23:59:00Z",
-  "order_timestamp_code": 1
-}
+POST /api/v21/user/session/login
+POST /api/v21/export/observation/by-station/query  (parameter_names: ["*"])
 ```
 
-**Token auto-refresh** setiap ~47 jam (cache: `data/cache/bmkg_token.json`).
+## API
 
-### Setup `.env`
-```
-BMKG_USERNAME=psimkg
-BMKG_PASSWORD=your_password
-```
-
-### Via Dashboard
-Sidebar → Observasi Sinoptik → pilih tanggal → **Fetch Observasi (POST API)**
-
-> API hanya bisa diakses dari **jaringan BMKG** (diblokir Cloudflare dari internet publik).
-
----
-
-## SFTP litbangweb
-
-Observasi disinkronkan dari `/opt/lampp/htdocs/monas` via SFTP (tombol **Sync SFTP**).
-
-## Fitur Dashboard
-
-- **Ranking model** — mean RMSE semua parameter
-- **Drag & drop NC** + path lokal untuk file besar
-- **Scores vs Lead Time** — klik titik untuk angka detail
-- **Peta stasiun** — klik stasiun untuk fcst vs obs 4 model
-- **Token status** — indikator BMKG API + auto-refresh
-
-## API Endpoints
-
-- `GET /api/bmkg/token-status` — status token + auto-login
-- `POST /api/bmkg/refresh-token` — force refresh token
-- `POST /api/obs/fetch-bmkg` — fetch observasi (POST body JSON)
-- `POST /api/models/load-local-path` — baca NC dari path lokal
-- `POST /api/models/load-default-local` — baca dari LOCAL_NC_PATH
-- `GET /api/jobs/{id}` — progress proses NC background
+- `GET /api/pipeline/status` — status auto-sync
+- `GET /api/pipeline/inventory` — daftar NC di server
+- `GET /api/cycles` — init cycles tersedia (D-0)
+- `GET /api/verification/scores?init_time=...&lead_time=...`
 - `GET /api/verification/ranking`
-- `GET /api/verification/scores`

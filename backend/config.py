@@ -32,6 +32,34 @@ SFTP_USER = os.getenv("SFTP_USER", "litbangweb")
 SFTP_PASSWORD = os.getenv("SFTP_PASSWORD", "_Pusl1tb4ng.123_")
 SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/monas")
 
+# Model NC paths on litbangweb server (auto-sync, NO user upload)
+# Dashboard reads directly from these paths when deployed on litbangweb
+MODEL_LOCAL_PATHS = {
+    "InaNWP": {
+        "path": os.getenv("INANWP_NC_PATH", "/opt/lampp/htdocs/wrf/wrfout"),
+        "pattern": "*-asim.nc",
+    },
+    "InaCAWO": {
+        "path": os.getenv("INACAWO_NC_PATH", "/opt/lampp/htdocs/wrf/wrfout"),
+        "pattern": "*-cawo.nc",
+    },
+    "GFS": {
+        "path": os.getenv("GFS_NC_PATH", "/opt/lampp/htdocs/wrf/wrfout"),
+        "pattern": "*-gfs.nc",
+    },
+    "IFS": {
+        "path": os.getenv("IFS_NC_PATH", "/opt/lampp/htdocs/wrf/wrfout"),
+        "pattern": "*-ifs.nc",
+    },
+}
+
+# Max forecast lead time for dashboard (hours) — D+0 to D+7
+MAX_LEAD_TIME_HOURS = int(os.getenv("MAX_LEAD_TIME_HOURS", "168"))
+LEAD_TIME_STEP = int(os.getenv("LEAD_TIME_STEP", "3"))
+
+# Auto pipeline interval (seconds)
+PIPELINE_INTERVAL_SEC = int(os.getenv("PIPELINE_INTERVAL_SEC", "3600"))
+
 MODELS = ["InaNWP", "InaCAWO", "GFS", "IFS"]
 
 # All Sinoptik parameters from API Export Sinoptik (slide 8)

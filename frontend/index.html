@@ -12,20 +12,35 @@
 <body>
   <header>
     <h1>🌐 NWP Verification Dashboard</h1>
-    <p>Verifikasi InaNWP · InaCAWO · GFS · IFS vs Observasi Sinoptik BMKG (HARP)</p>
+    <p>HARP Point Verification · InaNWP · InaCAWO · GFS · IFS · Auto-sync litbangweb</p>
   </header>
 
   <div class="layout">
     <aside class="sidebar">
+      <section class="status-panel">
+        <h3>Status Pipeline</h3>
+        <div id="pipelineStatus" class="token-status">Memuat...</div>
+        <div id="dataSource" class="hint"></div>
+      </section>
+
+      <section>
+        <h3>Init Cycle (D-0)</h3>
+        <select id="initCycle">
+          <option value="">Semua / Terbaru</option>
+        </select>
+      </section>
+
+      <section>
+        <h3>Lead Time</h3>
+        <input type="range" id="leadTime" min="0" max="168" step="3" value="12" />
+        <span id="leadTimeLabel">D+0.5 (12 jam)</span>
+      </section>
+
       <section>
         <h3>Parameter</h3>
         <select id="parameter"></select>
       </section>
-      <section>
-        <h3>Lead Time (jam)</h3>
-        <input type="range" id="leadTime" min="0" max="48" step="3" value="12" />
-        <span id="leadTimeLabel">12</span>
-      </section>
+
       <section>
         <h3>Model</h3>
         <label><input type="checkbox" class="model-cb" value="InaNWP" checked /> InaNWP</label>
@@ -33,44 +48,12 @@
         <label><input type="checkbox" class="model-cb" value="GFS" checked /> GFS</label>
         <label><input type="checkbox" class="model-cb" value="IFS" checked /> IFS</label>
       </section>
-      <section>
-        <h3>File Model NC</h3>
-        <div id="dropZone" class="drop-zone">
-          <p>Drag & drop file .nc di sini</p>
-          <p class="hint">File besar (11GB)? Gunakan path lokal di bawah</p>
-          <input type="file" id="ncFile" accept=".nc" hidden />
-        </div>
-        <div id="uploadProgress" class="progress hidden"></div>
-        <label class="field-label">Path lokal (Windows/Linux)</label>
-        <input type="text" id="localPath" placeholder="C:\Users\husei\Downloads\2026070112-d01-asim.nc" />
-        <select id="ncModel">
-          <option>InaNWP</option>
-          <option>InaCAWO</option>
-          <option>GFS</option>
-          <option>IFS</option>
-        </select>
-        <button id="loadLocalPath">Muat dari Path Lokal</button>
-        <button id="loadDefaultLocal">Muat LOCAL_NC_PATH (.env)</button>
-        <button id="uploadNc">Upload File Kecil</button>
-      </section>
-      <section>
-        <h3>Observasi Sinoptik (BMKG API)</h3>
-        <div id="tokenStatus" class="token-status">Token: memeriksa...</div>
-        <label class="field-label">Dari</label>
-        <input type="datetime-local" id="obsFrom" value="2025-06-01T00:00" />
-        <label class="field-label">Sampai</label>
-        <input type="datetime-local" id="obsTo" value="2025-06-03T23:59" />
-        <button id="fetchObs">Fetch Observasi (POST API)</button>
-        <p class="hint">Semua parameter (*) · auto-chunk 4 hari · token refresh otomatis</p>
-        <button id="syncSftp">Sync SFTP</button>
-        <button id="seedDemo">Reset Demo Data</button>
-      </section>
     </aside>
 
     <main>
       <div class="tabs">
         <button class="tab active" data-tab="overview">Overview & Ranking</button>
-        <button class="tab" data-tab="scores">Scores vs Lead Time</button>
+        <button class="tab" data-tab="scores">Scores vs Lead Time (D+0 → D+7)</button>
         <button class="tab" data-tab="map">Peta Stasiun</button>
         <button class="tab" data-tab="station">Detail Stasiun</button>
       </div>
@@ -83,7 +66,7 @@
 
       <div id="scores" class="panel">
         <div id="scoreChart" class="chart"></div>
-        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail.</div>
+        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail (RMSE, Bias, MAE, N).</div>
       </div>
 
       <div id="map" class="panel">

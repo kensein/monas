@@ -122,4 +122,40 @@ def generate_demo_data() -> dict:
     save_observations(pd.DataFrame(obs_rows))
     save_forecasts(pd.DataFrame(fcst_rows))
     nc_path = generate_sample_nc()
-    return {"obs_records": len(obs_rows), "fcst_records": len(fcst_rows), "nc_path": str(nc_path)}
+
+    # Populate precomputed verification scores for demo dashboard
+    from backend.config import DB_PATH
+    from backend.services.pipeline import init_pipeline_db, save_verification_scores
+    from backend.services.verification import build_verification_pairs, det_verify
+
+    init_pipeline_db()
+    obs_df = pd.DataFrame(obs_rows)
+    fcst_df = pd.DataFrame(fcst_rows)
+    scores = []
+    for param in ["temp_drybulb_c_tttttt", "wind_speed_ff", "relative_humidity_pc",
+                  "pressure_qff_mb_derived", "rainfall_6h_rrr", "cloud_cover_oktas_m"]:
+        param_obs = obs_df[obs_df["parameter"] == param]
+        for model in models:
+            mfcst = fcst_df[(fcst_df["model"] == model) & (fcst_df["parameter"] == param)]
+            for lt in sorted(mfcst["lead_time"].unique()):
+                lt_fcst = mfcst[mfcst["lead_time"] == lt]
+                pairs = build_verification_pairs(param_obs, lt_fcst, param)
+                vr = det_verify(pairs, param, model, int(lt))
+                if vr:
+                    d = vr.to_dict()
+                    d["init_time"] = init_time.isoformat()
+                    scores.append(d)
+
+    save_verification_scores(scores)
+
+    import sqlite3
+    conn = sqlite3.connect(DB_PATH)
+    for model in models:
+        conn.execute(
+            "INSERT OR REPLACE INTO model_runs (model, init_time, nc_filename, status, processed_at) VALUES (?,?,?,?,?)",
+            (model, init_time.isoformat(), nc_path.name, "done", init_time.isoformat()),
+        )
+    conn.commit()
+    conn.close()
+
+    return {"obs_records": len(obs_rows), "fcst_records": len(fcst_rows), "nc_path": str(nc_path), "scores": len(scores)}
