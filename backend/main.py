@@ -1,13 +1,14 @@
 """FastAPI backend for NWP verification dashboard."""
 from __future__ import annotations
 
-import shutil
+import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 from backend.config import (
     API_PORT,
@@ -15,10 +16,12 @@ from backend.config import (
     NC_DIR,
     VERIFY_PARAMETERS,
 )
-from backend.services.nc_reader import inspect_nc, parse_init_time, read_point_forecast
+from backend.services.bmkg_auth import login, token_status
+from backend.services.job_manager import JobStatus, create_job, get_job, run_in_background
+from backend.services.nc_ingest import ingest_nc_from_path, resolve_local_path
+from backend.services.nc_reader import inspect_nc, read_point_forecast
 from backend.services.obs_fetcher import (
-    BMKGClient,
-    cache_obs_json,
+    fetch_and_save_sinoptik,
     get_stations,
     init_db,
     load_forecasts,
@@ -33,7 +36,7 @@ from backend.services.verification import (
     det_verify,
 )
 
-app = FastAPI(title="NWP Verification API", version="1.0.0")
+app = FastAPI(title="NWP Verification API", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,10 +45,22 @@ app.add_middleware(
 )
 
 
+class LocalPathRequest(BaseModel):
+    path: str = Field(..., description="Absolute path ke file .nc di komputer lokal")
+    model: str = "InaNWP"
+    copy_to_data_dir: bool = False
+
+
+class ObsFetchRequest(BaseModel):
+    date_from: str = Field(..., examples=["2025-06-01T00:00:00Z"])
+    date_to: str = Field(..., examples=["2025-06-03T23:59:00Z"])
+    station_wmo_ids: list[str] | None = None
+    parameter_names: list[str] | None = None
+
+
 @app.on_event("startup")
 async def startup() -> None:
     init_db()
-    # Seed demo data if DB empty
     if load_observations().empty:
         generate_demo_data()
 
@@ -55,30 +70,47 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/bmkg/token-status")
+async def bmkg_token_status() -> dict[str, Any]:
+    status = token_status()
+    if not status.get("logged_in"):
+        try:
+            await login()
+            status = token_status()
+            status["just_logged_in"] = True
+        except Exception as e:
+            status["error"] = str(e)
+    return status
+
+
+@app.post("/api/bmkg/refresh-token")
+async def bmkg_refresh_token() -> dict[str, Any]:
+    try:
+        await login(force=True)
+        return {"ok": True, **token_status()}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/parameters")
 def list_parameters() -> dict[str, Any]:
-    return {
-        "verify_parameters": VERIFY_PARAMETERS,
-        "models": MODELS,
-    }
+    return {"verify_parameters": VERIFY_PARAMETERS, "models": MODELS}
 
 
 @app.get("/api/stations")
 def stations() -> list[dict]:
-    df = get_stations()
-    return df.to_dict(orient="records")
+    return get_stations().to_dict(orient="records")
 
 
 @app.post("/api/obs/fetch-bmkg")
-async def fetch_bmkg_obs(
-    date_from: str = Query(..., example="2025-06-01T00:00:00Z"),
-    date_to: str = Query(..., example="2025-06-03T23:59:00Z"),
-) -> dict[str, Any]:
+async def fetch_bmkg_obs(body: ObsFetchRequest) -> dict[str, Any]:
+    """Fetch observasi Sinoptik real via POST export API (semua parameter)."""
     try:
-        client = BMKGClient()
-        records = await client.fetch_sinoptik(date_from, date_to)
-        count = cache_obs_json(records)
-        return {"records_saved": count, "fetched": len(records)}
+        return await fetch_and_save_sinoptik(
+            body.date_from, body.date_to,
+            station_wmo_ids=body.station_wmo_ids,
+            parameter_names=body.parameter_names or ["*"],
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -91,6 +123,46 @@ def sync_sftp() -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/models/load-local-path")
+async def load_local_nc(body: LocalPathRequest) -> dict[str, Any]:
+    """
+    Baca file NC langsung dari path lokal (untuk file besar 11GB+).
+    Jalankan backend di komputer yang punya file tersebut.
+    """
+    if body.model not in MODELS:
+        raise HTTPException(status_code=400, detail=f"Model harus salah satu dari {MODELS}")
+
+    try:
+        path = resolve_local_path(body.path)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    job = create_job("nc_ingest")
+    run_in_background(
+        job.id, ingest_nc_from_path, path, body.model, body.copy_to_data_dir,
+    )
+    return {
+        "job_id": job.id,
+        "message": f"Memproses {path.name} ({path.stat().st_size / 1e9:.2f} GB) di background",
+        "path": str(path),
+    }
+
+
+@app.get("/api/jobs/{job_id}")
+def job_status(job_id: str) -> dict[str, Any]:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job tidak ditemukan")
+    return {
+        "id": job.id,
+        "type": job.type,
+        "status": job.status.value,
+        "progress": job.progress,
+        "message": job.message,
+        "result": job.result,
+    }
+
+
 @app.post("/api/models/upload-nc")
 async def upload_nc(
     file: UploadFile = File(...),
@@ -99,20 +171,32 @@ async def upload_nc(
     if model not in MODELS:
         raise HTTPException(status_code=400, detail=f"Model harus salah satu dari {MODELS}")
 
-    dest = NC_DIR / file.filename
+    dest = NC_DIR / (file.filename or "upload.nc")
+    job = create_job("nc_upload")
+
+    # Simpan file dulu (sync) agar stream tidak hilang saat background thread
     with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while chunk := await file.read(1024 * 1024):
+            f.write(chunk)
 
-    info = inspect_nc(dest)
-    stations_df = get_stations()
-    params = list(VERIFY_PARAMETERS.keys())
+    run_in_background(
+        job.id, ingest_nc_from_path, dest, model, False,
+    )
+    return {
+        "job_id": job.id,
+        "filename": dest.name,
+        "size_gb": round(dest.stat().st_size / 1e9, 2),
+        "message": "Upload selesai, proses interpolasi di background",
+    }
 
-    try:
-        fcst_df = read_point_forecast(dest, model, stations_df, params)
-        saved = save_forecasts(fcst_df)
-        return {"filename": file.filename, "info": info, "forecast_records": saved, "model": model}
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"Error membaca NC: {e}")
+
+@app.post("/api/models/load-default-local")
+async def load_default_local(model: str = Query("InaNWP")) -> dict[str, Any]:
+    """Load NC from LOCAL_NC_PATH env var."""
+    path_str = os.getenv("LOCAL_NC_PATH", "")
+    if not path_str:
+        raise HTTPException(status_code=400, detail="LOCAL_NC_PATH belum diset di .env")
+    return await load_local_nc(LocalPathRequest(path=path_str, model=model))
 
 
 @app.post("/api/demo/seed")
@@ -138,7 +222,7 @@ def verification_scores(
     results = []
 
     for model in model_list:
-        mfcst = fcst_df[fcst_df["model"] == model].rename(columns={"fcst": "fcst"})
+        mfcst = fcst_df[fcst_df["model"] == model]
         if lead_time is not None:
             mfcst = mfcst[mfcst["lead_time"] == lead_time]
 
@@ -171,7 +255,6 @@ def verification_ranking(
             for lt in mfcst["lead_time"].unique():
                 lt_fcst = mfcst[mfcst["lead_time"] == lt]
                 pairs = build_verification_pairs(obs_df, lt_fcst, param, circular=circular)
-                from backend.services.verification import VerificationResult
                 vr = det_verify(pairs, param, model, int(lt), circular=circular)
                 if vr:
                     all_results.append(vr)

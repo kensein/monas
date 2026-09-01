@@ -153,7 +153,8 @@ def read_point_forecast(
     if init_time is None:
         init_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
 
-    ds = xr.open_dataset(nc_path)
+    use_chunks = nc_path.stat().st_size > 500_000_000
+    ds = xr.open_dataset(nc_path, chunks={"Time": 1} if use_chunks else None)
     lats, lons = _get_coords(ds)
     lead_times = _get_lead_times(ds, init_time)
     var_map = MODEL_VAR_MAP.get(model, MODEL_VAR_MAP["InaNWP"])
@@ -219,7 +220,7 @@ def read_point_forecast(
 
 
 def inspect_nc(nc_path: Path) -> dict[str, Any]:
-    ds = xr.open_dataset(nc_path)
+    ds = xr.open_dataset(nc_path, decode_times=False)
     info = {
         "variables": list(ds.data_vars),
         "dims": dict(ds.dims),

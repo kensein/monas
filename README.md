@@ -12,6 +12,7 @@ Dashboard interaktif verifikasi model NWP (**InaNWP**, **InaCAWO**, **GFS**, **I
 ## Menjalankan
 
 ```bash
+cp .env.example .env   # edit username/password
 pip install -r requirements.txt
 chmod +x start.sh
 ./start.sh
@@ -19,48 +20,80 @@ chmod +x start.sh
 
 Buka: http://localhost:3013
 
-## Upload file NC
+---
 
-File NC dari komputer lokal (contoh `2026070112-d01-asim.nc`) dapat di-upload via sidebar dashboard **Upload NC**, atau:
+## File NC 11GB — Gunakan Path Lokal
 
-```bash
-curl -F "file=@/path/to/2026070112-d01-asim.nc" \
-  "http://localhost:8013/api/models/upload-nc?model=InaNWP"
+Browser **tidak bisa** upload file 11GB. Jalankan `./start.sh` di **komputer Windows** yang punya file, lalu:
+
+1. Isi path: `C:\Users\husei\Downloads\2026070112-d01-asim.nc`
+2. Klik **Muat dari Path Lokal**
+
+Atau set di `.env`:
+```
+LOCAL_NC_PATH=C:\Users\husei\Downloads\2026070112-d01-asim.nc
+```
+Lalu klik **Muat LOCAL_NC_PATH (.env)**
+
+Drag & drop hanya untuk file **< 2GB**.
+
+---
+
+## Fetch Observasi Sinoptik (BMKG API)
+
+Sesuai PPTX **API Export Sinoptik (search api)**:
+
+| Step | Method | URL |
+|------|--------|-----|
+| 1. Login | **POST** | `https://bmkgsatu.bmkg.go.id/api/v21/user/session/login` |
+| 2. Export | **POST** | `https://bmkgsatu.bmkg.go.id/api/v21/export/observation/by-station/query` |
+
+Body export (semua parameter):
+```json
+{
+  "data_type": "sinoptik",
+  "parameter_names": ["*"],
+  "station_wmo_ids": ["*"],
+  "date_from": "2025-06-01T00:00:00Z",
+  "date_to": "2025-06-03T23:59:00Z",
+  "order_timestamp_code": 1
+}
 ```
 
-## Observasi Sinoptik (BMKG API v21)
+**Token auto-refresh** setiap ~47 jam (cache: `data/cache/bmkg_token.json`).
 
-Set environment variables untuk fetch observasi langsung:
-
-```bash
-export BMKG_USERNAME=your_user
-export BMKG_PASSWORD=your_password
+### Setup `.env`
+```
+BMKG_USERNAME=psimkg
+BMKG_PASSWORD=your_password
 ```
 
-Fetch via API:
-```bash
-curl -X POST "http://localhost:8013/api/obs/fetch-bmkg?date_from=2025-06-01T00:00:00Z&date_to=2025-06-03T23:59:00Z"
-```
+### Via Dashboard
+Sidebar → Observasi Sinoptik → pilih tanggal → **Fetch Observasi (POST API)**
 
-Semua parameter Sinoptik dari API Export Sinoptik didukung (lihat `backend/config.py`).
+> API hanya bisa diakses dari **jaringan BMKG** (diblokir Cloudflare dari internet publik).
+
+---
 
 ## SFTP litbangweb
 
-Observasi disinkronkan dari `/opt/lampp/htdocs/monas` via SFTP (tombol **Sync SFTP** di dashboard).
+Observasi disinkronkan dari `/opt/lampp/htdocs/monas` via SFTP (tombol **Sync SFTP**).
 
 ## Fitur Dashboard
 
-- **Ranking model** — peringkat skill berdasarkan mean RMSE (semua parameter)
-- **Scores vs Lead Time** — klik titik grafik untuk angka detail (RMSE, Bias, MAE, N)
-- **Peta stasiun** — klik stasiun untuk tabel fcst vs obs 4 model
-- **Detail stasiun** — time series interaktif obs + 4 model
+- **Ranking model** — mean RMSE semua parameter
+- **Drag & drop NC** + path lokal untuk file besar
+- **Scores vs Lead Time** — klik titik untuk angka detail
+- **Peta stasiun** — klik stasiun untuk fcst vs obs 4 model
+- **Token status** — indikator BMKG API + auto-refresh
 
 ## API Endpoints
 
-- `GET /api/verification/ranking` — ranking model
-- `GET /api/verification/scores?parameter=...&models=...`
-- `GET /api/verification/map?model=...&parameter=...&lead_time=...`
-- `GET /api/station/{id}/detail`
-- `POST /api/models/upload-nc`
-- `POST /api/obs/sync-sftp`
-- `POST /api/demo/seed`
+- `GET /api/bmkg/token-status` — status token + auto-login
+- `POST /api/bmkg/refresh-token` — force refresh token
+- `POST /api/obs/fetch-bmkg` — fetch observasi (POST body JSON)
+- `POST /api/models/load-local-path` — baca NC dari path lokal
+- `POST /api/models/load-default-local` — baca dari LOCAL_NC_PATH
+- `GET /api/jobs/{id}` — progress proses NC background
+- `GET /api/verification/ranking`
+- `GET /api/verification/scores`

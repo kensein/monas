@@ -7,13 +7,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
 import pandas as pd
 
 from backend.config import (
-    BMKG_API_BASE,
-    BMKG_PASSWORD,
-    BMKG_USERNAME,
     DB_PATH,
     OBS_DIR,
     SFTP_HOST,
@@ -23,6 +19,7 @@ from backend.config import (
     SFTP_USER,
     SINOPTIK_PARAMETERS,
 )
+from backend.services.bmkg_export import fetch_sinoptik_range
 
 
 def get_db() -> sqlite3.Connection:
@@ -68,55 +65,41 @@ def init_db() -> None:
     conn.close()
 
 
-class BMKGClient:
-    def __init__(self) -> None:
-        self.base = BMKG_API_BASE.rstrip("/")
-        self.token: str | None = None
+async def fetch_and_save_sinoptik(
+    date_from: str,
+    date_to: str,
+    station_wmo_ids: list[str] | None = None,
+    parameter_names: list[str] | None = None,
+) -> dict[str, Any]:
+    """Fetch all Sinoptik params via POST export API, save to DB."""
+    records = await fetch_sinoptik_range(
+        date_from, date_to,
+        station_wmo_ids=station_wmo_ids,
+        parameter_names=parameter_names or ["*"],
+    )
+    df = normalize_obs_records(records)
+    saved = save_observations(df)
+    upsert_stations_from_records(records)
+    return {"fetched": len(records), "records_saved": saved}
 
-    async def login(self) -> str:
-        if not BMKG_USERNAME or not BMKG_PASSWORD:
-            raise ValueError("BMKG_USERNAME dan BMKG_PASSWORD belum diset di environment")
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                f"{self.base}/api/v21/user/session/login",
-                json={"username": BMKG_USERNAME, "password": BMKG_PASSWORD},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            self.token = data.get("token") or data.get("access_token") or data.get("data", {}).get("token")
-            if not self.token:
-                raise ValueError(f"Token tidak ditemukan dalam response: {list(data.keys())}")
-            return self.token
 
-    async def fetch_sinoptik(
-        self,
-        date_from: str,
-        date_to: str,
-        station_wmo_ids: list[str] | None = None,
-        parameter_names: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        if not self.token:
-            await self.login()
-
-        body = {
-            "data_type": "sinoptik",
-            "parameter_names": parameter_names or ["*"],
-            "station_wmo_ids": station_wmo_ids or ["*"],
-            "date_from": date_from,
-            "date_to": date_to,
-            "order_timestamp_code": 1,
-        }
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                f"{self.base}/api/v21/export/observation/by-station/query",
-                headers={"Authorization": f"Bearer {self.token}"},
-                json=body,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, list):
-                return data
-            return data.get("data") or data.get("results") or data.get("items") or []
+def upsert_stations_from_records(records: list[dict[str, Any]]) -> None:
+    conn = get_db()
+    seen = set()
+    for rec in records:
+        sid = str(rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id") or "")
+        if not sid or sid in seen:
+            continue
+        seen.add(sid)
+        name = rec.get("station_name") or sid
+        lat = rec.get("latitude") or rec.get("lat")
+        lon = rec.get("longitude") or rec.get("lon")
+        conn.execute(
+            "INSERT OR IGNORE INTO stations (station_id, wmo_id, name, lat, lon, region) VALUES (?,?,?,?,?,?)",
+            (sid, sid, name, lat, lon, rec.get("region")),
+        )
+    conn.commit()
+    conn.close()
 
 
 def normalize_obs_records(records: list[dict[str, Any]]) -> pd.DataFrame:
@@ -127,7 +110,10 @@ def normalize_obs_records(records: list[dict[str, Any]]) -> pd.DataFrame:
     )]
 
     for rec in records:
-        station_id = str(rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id", ""))
+        station_id = str(
+            rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id")
+            or rec.get("stationWmoId") or ""
+        )
         valid_time = rec.get("data_timestamp") or rec.get("valid_time")
         if not station_id or not valid_time:
             continue

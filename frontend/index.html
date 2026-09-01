@@ -34,18 +34,34 @@
         <label><input type="checkbox" class="model-cb" value="IFS" checked /> IFS</label>
       </section>
       <section>
-        <h3>Upload NC</h3>
-        <input type="file" id="ncFile" accept=".nc" />
+        <h3>File Model NC</h3>
+        <div id="dropZone" class="drop-zone">
+          <p>Drag & drop file .nc di sini</p>
+          <p class="hint">File besar (11GB)? Gunakan path lokal di bawah</p>
+          <input type="file" id="ncFile" accept=".nc" hidden />
+        </div>
+        <div id="uploadProgress" class="progress hidden"></div>
+        <label class="field-label">Path lokal (Windows/Linux)</label>
+        <input type="text" id="localPath" placeholder="C:\Users\husei\Downloads\2026070112-d01-asim.nc" />
         <select id="ncModel">
           <option>InaNWP</option>
           <option>InaCAWO</option>
           <option>GFS</option>
           <option>IFS</option>
         </select>
-        <button id="uploadNc">Upload</button>
+        <button id="loadLocalPath">Muat dari Path Lokal</button>
+        <button id="loadDefaultLocal">Muat LOCAL_NC_PATH (.env)</button>
+        <button id="uploadNc">Upload File Kecil</button>
       </section>
       <section>
-        <h3>Observasi</h3>
+        <h3>Observasi Sinoptik (BMKG API)</h3>
+        <div id="tokenStatus" class="token-status">Token: memeriksa...</div>
+        <label class="field-label">Dari</label>
+        <input type="datetime-local" id="obsFrom" value="2025-06-01T00:00" />
+        <label class="field-label">Sampai</label>
+        <input type="datetime-local" id="obsTo" value="2025-06-03T23:59" />
+        <button id="fetchObs">Fetch Observasi (POST API)</button>
+        <p class="hint">Semua parameter (*) · auto-chunk 4 hari · token refresh otomatis</p>
         <button id="syncSftp">Sync SFTP</button>
         <button id="seedDemo">Reset Demo Data</button>
       </section>

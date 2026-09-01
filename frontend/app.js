@@ -39,7 +39,74 @@ async function init() {
 
   initMap();
   bindEvents();
+  setupDropZone();
+  await refreshTokenStatus();
   await refreshAll();
+}
+
+function setupDropZone() {
+  const zone = document.getElementById('dropZone');
+  const input = document.getElementById('ncFile');
+
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.nc')) {
+      input.files = e.dataTransfer.files;
+      zone.querySelector('p').textContent = `✓ ${file.name} (${(file.size/1e9).toFixed(2)} GB)`;
+      if (file.size > 2e9) {
+        alert(`File ${(file.size/1e9).toFixed(1)} GB terlalu besar untuk upload browser.\nGunakan "Muat dari Path Lokal" jika backend jalan di komputer yang sama dengan file.`);
+      }
+    } else {
+      alert('Hanya file .nc yang didukung');
+    }
+  });
+  input.addEventListener('change', () => {
+    const f = input.files[0];
+    if (f) zone.querySelector('p').textContent = `✓ ${f.name} (${(f.size/1e9).toFixed(2)} GB)`;
+  });
+}
+
+async function pollJob(jobId) {
+  const el = document.getElementById('uploadProgress');
+  el.classList.remove('hidden');
+  while (true) {
+    const job = await api(`/api/jobs/${jobId}`);
+    el.innerHTML = `<div class="bar" style="width:${job.progress}%"></div>${job.message} (${job.progress.toFixed(0)}%)`;
+    if (job.status === 'done') {
+      el.innerHTML = `✓ Selesai: ${job.result.forecast_records || ''} forecast records`;
+      await refreshAll();
+      return job;
+    }
+    if (job.status === 'error') throw new Error(job.message);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+}
+
+async function refreshTokenStatus() {
+  const el = document.getElementById('tokenStatus');
+  try {
+    const s = await api('/api/bmkg/token-status');
+    if (s.logged_in) {
+      el.className = 'token-status ok';
+      el.textContent = `✓ Token aktif (${s.username}) · expires ${s.expires_in_hours}h · auto-refresh ON`;
+    } else {
+      el.className = 'token-status err';
+      el.textContent = `✗ ${s.error || 'Belum login'}`;
+    }
+  } catch (e) {
+    el.className = 'token-status err';
+    el.textContent = `✗ ${e.message}`;
+  }
+}
+
+function toIsoUtc(dtLocal) {
+  if (!dtLocal) return '';
+  return dtLocal.length === 16 ? dtLocal + ':00Z' : dtLocal.replace(' ', 'T') + (dtLocal.endsWith('Z') ? '' : 'Z');
 }
 
 function bindEvents() {
@@ -66,7 +133,8 @@ function bindEvents() {
 
   document.getElementById('uploadNc').addEventListener('click', async () => {
     const file = document.getElementById('ncFile').files[0];
-    if (!file) return alert('Pilih file NC terlebih dahulu');
+    if (!file) return alert('Pilih atau drag & drop file NC terlebih dahulu');
+    if (file.size > 2e9) return alert('File >2GB: gunakan "Muat dari Path Lokal"');
     const model = document.getElementById('ncModel').value;
     const fd = new FormData();
     fd.append('file', file);
@@ -74,9 +142,55 @@ function bindEvents() {
       const res = await fetch(`${API}/api/models/upload-nc?model=${model}`, { method: 'POST', body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail);
-      alert(`Upload berhasil: ${data.forecast_records} records`);
-      await refreshAll();
+      await pollJob(data.job_id);
     } catch (e) { alert('Upload gagal: ' + e.message); }
+  });
+
+  document.getElementById('loadLocalPath').addEventListener('click', async () => {
+    const path = document.getElementById('localPath').value.trim();
+    if (!path) return alert('Isi path file NC lokal');
+    const model = document.getElementById('ncModel').value;
+    try {
+      const res = await fetch(`${API}/api/models/load-local-path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, model, copy_to_data_dir: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      await pollJob(data.job_id);
+    } catch (e) { alert('Load path gagal: ' + e.message); }
+  });
+
+  document.getElementById('loadDefaultLocal').addEventListener('click', async () => {
+    const model = document.getElementById('ncModel').value;
+    try {
+      const res = await fetch(`${API}/api/models/load-default-local?model=${model}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      await pollJob(data.job_id);
+    } catch (e) { alert('Load default path gagal: ' + e.message); }
+  });
+
+  document.getElementById('fetchObs').addEventListener('click', async () => {
+    const date_from = toIsoUtc(document.getElementById('obsFrom').value);
+    const date_to = toIsoUtc(document.getElementById('obsTo').value);
+    const btn = document.getElementById('fetchObs');
+    btn.disabled = true;
+    btn.textContent = 'Fetching...';
+    try {
+      const res = await fetch(`${API}/api/obs/fetch-bmkg`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date_from, date_to, parameter_names: ['*'] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail);
+      alert(`Berhasil: ${data.fetched} records fetched, ${data.records_saved} saved`);
+      await refreshTokenStatus();
+      await refreshAll();
+    } catch (e) { alert('Fetch observasi gagal: ' + e.message); }
+    finally { btn.disabled = false; btn.textContent = 'Fetch Observasi (POST API)'; }
   });
 
   document.getElementById('syncSftp').addEventListener('click', async () => {
