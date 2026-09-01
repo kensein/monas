@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NWP Verification Dashboard — BMKG Litbang</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🌐 NWP Verification Dashboard</h1>
+    <p>Verifikasi InaNWP · InaCAWO · GFS · IFS vs Observasi Sinoptik BMKG (HARP)</p>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <section>
+        <h3>Parameter</h3>
+        <select id="parameter"></select>
+      </section>
+      <section>
+        <h3>Lead Time (jam)</h3>
+        <input type="range" id="leadTime" min="0" max="48" step="3" value="12" />
+        <span id="leadTimeLabel">12</span>
+      </section>
+      <section>
+        <h3>Model</h3>
+        <label><input type="checkbox" class="model-cb" value="InaNWP" checked /> InaNWP</label>
+        <label><input type="checkbox" class="model-cb" value="InaCAWO" checked /> InaCAWO</label>
+        <label><input type="checkbox" class="model-cb" value="GFS" checked /> GFS</label>
+        <label><input type="checkbox" class="model-cb" value="IFS" checked /> IFS</label>
+      </section>
+      <section>
+        <h3>Upload NC</h3>
+        <input type="file" id="ncFile" accept=".nc" />
+        <select id="ncModel">
+          <option>InaNWP</option>
+          <option>InaCAWO</option>
+          <option>GFS</option>
+          <option>IFS</option>
+        </select>
+        <button id="uploadNc">Upload</button>
+      </section>
+      <section>
+        <h3>Observasi</h3>
+        <button id="syncSftp">Sync SFTP</button>
+        <button id="seedDemo">Reset Demo Data</button>
+      </section>
+    </aside>
+
+    <main>
+      <div class="tabs">
+        <button class="tab active" data-tab="overview">Overview & Ranking</button>
+        <button class="tab" data-tab="scores">Scores vs Lead Time</button>
+        <button class="tab" data-tab="map">Peta Stasiun</button>
+        <button class="tab" data-tab="station">Detail Stasiun</button>
+      </div>
+
+      <div id="overview" class="panel active">
+        <div id="rankingCards" class="ranking-cards"></div>
+        <div id="rankingChart" class="chart"></div>
+        <div id="kpiGrid" class="kpi-grid"></div>
+      </div>
+
+      <div id="scores" class="panel">
+        <div id="scoreChart" class="chart"></div>
+        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail.</div>
+      </div>
+
+      <div id="map" class="panel">
+        <div class="map-wrap">
+          <div id="leafletMap"></div>
+          <div id="mapDetail" class="detail-box">Klik stasiun pada peta untuk melihat fcst vs obs.</div>
+        </div>
+      </div>
+
+      <div id="station" class="panel">
+        <select id="stationSelect"></select>
+        <div id="stationChart" class="chart"></div>
+        <div id="stationTable" class="detail-box"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
