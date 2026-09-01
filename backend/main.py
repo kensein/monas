@@ -52,15 +52,21 @@ class ObsFetchRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup() -> None:
+    import os
     init_db()
     init_pipeline_db()
     from backend.services.pipeline import load_verification_scores
     if load_verification_scores().empty:
         generate_demo_data()
     start_scheduler()
-    # Initial pipeline scan (background) — skip 12GB download from cloud; runs fully on litbangweb
-    import os
-    if os.path.exists("/opt/lampp/htdocs/wrf/wrfout") or os.getenv("FORCE_PIPELINE", "").lower() == "true":
+    # Local mode: scan Windows/local NC folders when FORCE_PIPELINE or local path exists
+    force = os.getenv("FORCE_PIPELINE", "").lower() == "true"
+    local_paths = [
+        os.getenv("INANWP_NC_PATH", ""),
+        os.getenv("LOCAL_NC_PATH", ""),
+    ]
+    has_local = any(p and __import__("pathlib").Path(p).exists() for p in local_paths)
+    if force or has_local:
         job = create_job("pipeline_scan")
         run_in_background(job.id, run_full_pipeline)
 
