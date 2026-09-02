@@ -192,6 +192,12 @@ function bindEvents() {
       btn.classList.add('active');
       document.getElementById(btn.dataset.tab).classList.add('active');
       refreshAll();
+      requestAnimationFrame(() => {
+        rankingChart?.redraw();
+        scoreChart?.redraw();
+        stationChart?.redraw();
+        stationMap?.invalidateSize();
+      });
     });
   });
 

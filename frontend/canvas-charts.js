@@ -78,7 +78,7 @@
       this.yLabel = yLabel || '';
       this.bar = { labels, values, colors: colors || values.map((_, i) => ['#00529B', '#64748b', '#94a3b8', '#cbd5e1'][i % 4]) };
       this.lines = null;
-      this.draw();
+      requestAnimationFrame(() => this.draw());
     }
 
     setLines({ series, title, xLabel, yLabel, xNumeric = false }) {
@@ -89,7 +89,11 @@
       this.xNumeric = xNumeric;
       this.lines = series;
       this.bar = null;
-      this.draw();
+      requestAnimationFrame(() => this.draw());
+    }
+
+    redraw() {
+      this._resize();
     }
 
     _plot() {
@@ -139,6 +143,7 @@
     }
 
     _drawBar() {
+      const ctx = this.ctx;
       const { labels, values, colors } = this.bar;
       const plot = this._plot();
       const minY = 0;
@@ -182,6 +187,7 @@
     }
 
     _drawLines() {
+      const ctx = this.ctx;
       const plot = this._plot();
       const allY = [];
       const allX = [];
