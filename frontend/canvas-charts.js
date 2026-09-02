@@ -356,7 +356,16 @@
       if (hit.type === 'bar') {
         lines = [`${hit.label}`, `RMSE: ${hit.value.toFixed(4)}`];
       } else {
-        lines = [hit.series, `x: ${hit.x}`, `y: ${hit.y?.toFixed?.(4) ?? hit.y}`];
+        let xLabel = hit.x;
+        if (this.xTime && typeof hit.x === 'number') {
+          try {
+            xLabel = new Date(hit.x).toLocaleString('id-ID', {
+              timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short',
+              hour: '2-digit', minute: '2-digit', hour12: false,
+            }) + ' WIB';
+          } catch { /* keep raw */ }
+        }
+        lines = [hit.series, `x: ${xLabel}`, `y: ${hit.y?.toFixed?.(4) ?? hit.y}`];
       }
       ctx.font = `12px ${FONT}`;
       const tw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 16;
