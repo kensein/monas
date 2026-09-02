@@ -71,6 +71,8 @@ Semua kalkulasi verifikasi dijalankan **saat pipeline** (bukan saat buka website
 
 Dashboard **hanya membaca cache**. **Flow harian PC→webpsi:** `docs/DAILY_PC_WEBPSI_FLOW.md` (Task Scheduler 03:00, parallel 4 model, artifact sync, `SERVE_READONLY` di webpsi).
 
+**Detail Stasiun:** time series kalender (Juni → obs terakhir) dengan dropdown 1–12 bulan; gap pada garis model = model tidak running. Lead time sidebar memilih lapisan forecast.
+
 - Backfill otomatis saat startup jika skor ada tapi cache belum terisi
 - Backfill manual (sekali): `python scripts/rebuild_dashboard_cache.py`
 - Export artifact: `python scripts/export_light_artifacts.py`

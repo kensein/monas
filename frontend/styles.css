@@ -138,16 +138,39 @@ main { padding: 1rem; overflow-y: auto; }
 .table-scroll { max-height: 420px; overflow: auto; }
 .station-ts-table tr.lt-highlight { background: #dbeafe; box-shadow: inset 3px 0 0 var(--accent); }
 .station-ts-table tr.lt-highlight td { font-weight: 600; }
+.station-ts-table tr.row-gap { background: #fff7ed; }
+.station-ts-table tr.row-gap td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
 .lt-note { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.5rem; }
 .time-utc { font-size: 0.82rem; color: var(--muted); }
 
 #stationSelect {
   width: 100%;
   max-width: 480px;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.station-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+.range-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.range-label select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 180px;
 }
 
 .badge {
