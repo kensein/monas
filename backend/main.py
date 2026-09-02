@@ -301,6 +301,28 @@ def verification_map(
     return stats.merge(stations_df, on="station_id", how="left").round(4).to_dict(orient="records")
 
 
+@app.get("/api/verification/map/bulk")
+def verification_map_bulk(
+    model: str = Query("InaNWP"),
+    parameter: str = Query("temp_drybulb_c_tttttt"),
+    init_time: str | None = None,
+) -> dict[str, Any]:
+    """Semua lead time sekaligus — frontend filter saat slider digeser (tanpa round-trip API)."""
+    from backend.services.verification_cache import load_verification_station_scores_bulk
+
+    stats = load_verification_station_scores_bulk(model, parameter, init_time=init_time)
+    if stats.empty:
+        return {"available_lead_times": [], "records": []}
+
+    stations_df = get_stations()
+    merged = stats.merge(stations_df, on="station_id", how="left").round(4)
+    lead_times = sorted(int(x) for x in merged["lead_time"].unique())
+    return {
+        "available_lead_times": lead_times,
+        "records": merged.to_dict(orient="records"),
+    }
+
+
 @app.get("/api/station/{station_id}/detail")
 def station_detail(
     station_id: str,
@@ -332,34 +354,33 @@ def station_detail(
         parameters=[parameter],
         init_time=resolved_init,
         station_id=station_id,
-        lead_time=lead_time,
+        lead_time=None,
     )
-    if fcst_df.empty:
-        fcst_wide = pd.DataFrame(columns=["valid_time"])
-    else:
-        fcst_df = fcst_df.copy()
-        fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
-        fcst_wide = fcst_df.pivot_table(
-            index="valid_time", columns="model", values="fcst", aggfunc="first",
-        ).reset_index()
-
     obs_sub = obs_df[["valid_time", "value"]].drop_duplicates("valid_time").rename(columns={"value": "obs"})
-    merged = obs_sub.merge(fcst_wide, on="valid_time", how="outer")
-    merged = merged.sort_values("valid_time")
+    obs_map = dict(zip(obs_sub["valid_time"], obs_sub["obs"])) if not obs_sub.empty else {}
 
     series: list[dict[str, Any]] = []
-    for _, row in merged.iterrows():
-        vt = row["valid_time"]
-        if pd.isna(vt):
-            continue
-        entry: dict[str, Any] = {"valid_time": str(vt)}
-        if pd.notna(row.get("obs")):
-            entry["obs"] = float(row["obs"])
-        for model in model_list:
-            if model in row.index and pd.notna(row[model]):
-                entry[model] = float(row[model])
-        if "obs" in entry or any(m in entry for m in model_list):
-            series.append(entry)
+    available_lead_times: list[int] = []
+    if not fcst_df.empty:
+        fcst_df = fcst_df.copy()
+        fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
+        fcst_df["lead_time"] = fcst_df["lead_time"].astype(int)
+        available_lead_times = sorted(fcst_df["lead_time"].unique().tolist())
+
+        for lt in available_lead_times:
+            lt_fcst = fcst_df[fcst_df["lead_time"] == lt]
+            vt = lt_fcst["valid_time"].iloc[0] if not lt_fcst.empty else None
+            if not vt or pd.isna(vt):
+                continue
+            entry: dict[str, Any] = {"lead_time": int(lt), "valid_time": str(vt)}
+            if vt in obs_map:
+                entry["obs"] = float(obs_map[vt])
+            for model in model_list:
+                mrow = lt_fcst[lt_fcst["model"] == model]
+                if not mrow.empty and pd.notna(mrow.iloc[0]["fcst"]):
+                    entry[model] = float(mrow.iloc[0]["fcst"])
+            if "obs" in entry or any(m in entry for m in model_list):
+                series.append(entry)
 
     st = get_stations()
     info = st[st["station_id"] == station_id]
@@ -367,7 +388,7 @@ def station_detail(
         "station": info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id},
         "parameter": parameter,
         "init_time": resolved_init,
-        "lead_time": lead_time,
+        "available_lead_times": available_lead_times,
         "series": series,
     }
 

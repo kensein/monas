@@ -28,6 +28,8 @@ let paramsMeta = {};
 let maxLeadTime = 168;
 let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy' };
 let cartoApiKey = '';
+let mapBulkCache = { key: '', data: null };
+let stationDetailCache = { key: '', data: null };
 
 async function api(path, opts = {}) {
   const res = await fetch(`${API}${path}`, opts);
@@ -46,6 +48,42 @@ function formatLeadTime(h) {
   if (h === 0) return 'D+0 (analysis)';
   if (h < 24) return `D+${(h / 24).toFixed(1)} (${h} jam)`;
   return `D+${(h / 24).toFixed(1)} (${h} jam)`;
+}
+
+/** UTC ISO → teks WIB (Asia/Jakarta, UTC+7). */
+function formatTimeWIB(isoUtc) {
+  if (!isoUtc) return '—';
+  const s = String(isoUtc).endsWith('Z') ? isoUtc : `${isoUtc}Z`;
+  try {
+    return new Date(s).toLocaleString('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }) + ' WIB';
+  } catch {
+    return String(isoUtc).slice(0, 16);
+  }
+}
+
+function formatTimeDual(isoUtc) {
+  if (!isoUtc) return '—';
+  const utc = String(isoUtc).replace('Z', '').slice(0, 16).replace('T', ' ');
+  return `${formatTimeWIB(isoUtc)} <span class="time-utc">(${utc} UTC)</span>`;
+}
+
+function nearestLeadTime(available, target) {
+  if (!available?.length) return null;
+  let best = available[0];
+  let bestD = Math.abs(best - target);
+  for (const lt of available) {
+    const d = Math.abs(lt - target);
+    if (d < bestD) { best = lt; bestD = d; }
+  }
+  return best;
 }
 
 async function loadPublicConfig() {
@@ -161,7 +199,7 @@ async function loadCycles() {
     const cycles = await api('/api/cycles');
     const sel = document.getElementById('initCycle');
     const opts = cycles.filter(c => c.status === 'done').map(c =>
-      `<option value="${c.init_time}">${c.model} · ${c.init_time?.slice(0, 16)} · ${c.nc_filename || ''}</option>`
+      `<option value="${c.init_time}">${c.model} · ${formatTimeWIB(c.init_time)} · ${c.nc_filename || ''}</option>`
     );
     sel.innerHTML = '<option value="">Terbaru (semua cycle)</option>' + opts.join('');
   } catch (e) { console.warn('cycles', e); }
@@ -201,13 +239,27 @@ function bindEvents() {
     });
   });
 
-  ['parameter', 'initCycle'].forEach(id => document.getElementById(id).addEventListener('change', refreshAll));
+  ['parameter', 'initCycle'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+    mapBulkCache.key = '';
+    stationDetailCache.key = '';
+    refreshAll();
+  }));
   document.getElementById('leadTime').addEventListener('input', () => {
     document.getElementById('leadTimeLabel').textContent = formatLeadTime(+document.getElementById('leadTime').value);
-    refreshAll();
+    const tab = document.querySelector('.tab.active')?.dataset.tab;
+    if (tab === 'map') renderMapFromCache();
+    else if (tab === 'station') renderStationFromCache();
+    else refreshAll();
   });
-  document.querySelectorAll('.model-cb').forEach(cb => cb.addEventListener('change', refreshAll));
-  document.getElementById('stationSelect').addEventListener('change', loadStationDetail);
+  document.querySelectorAll('.model-cb').forEach(cb => cb.addEventListener('change', () => {
+    mapBulkCache.key = '';
+    stationDetailCache.key = '';
+    refreshAll();
+  }));
+  document.getElementById('stationSelect').addEventListener('change', () => {
+    stationDetailCache.key = '';
+    loadStationDetail();
+  });
 }
 
 function scoresQuery(extra = '') {
@@ -281,19 +333,45 @@ async function loadScores() {
   });
 }
 
-async function loadMap() {
-  if (stationMap) stationMap.invalidateSize();
-  const lt = document.getElementById('leadTime').value;
-  const param = document.getElementById('parameter').value;
+async function ensureMapBulk() {
   const model = selectedModels()[0] || 'InaNWP';
+  const param = document.getElementById('parameter').value;
   const init = selectedInitTime();
-  const q = `model=${model}&parameter=${param}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
-  const data = await api(`/api/verification/map?${q}`);
+  const key = `${model}|${param}|${init}`;
+  if (mapBulkCache.key !== key) {
+    mapBulkCache.data = await api(
+      `/api/verification/map/bulk?model=${model}&parameter=${param}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`
+    );
+    mapBulkCache.key = key;
+  }
+  return mapBulkCache.data;
+}
+
+function renderMapFromCache() {
+  if (!mapBulkCache.data) return loadMap();
+  if (stationMap) stationMap.invalidateSize();
+  const lt = +document.getElementById('leadTime').value;
+  const available = mapBulkCache.data.available_lead_times || [];
+  const resolvedLt = available.includes(lt) ? lt : nearestLeadTime(available, lt);
+  const data = resolvedLt != null
+    ? (mapBulkCache.data.records || []).filter(d => d.lead_time === resolvedLt)
+    : [];
+
   if (!data.length) {
     stationMap.setStations([]);
-    document.getElementById('mapDetail').textContent = 'Belum ada data peta untuk filter ini.';
+    const detail = document.getElementById('mapDetail');
+    if (!available.length) {
+      detail.textContent = 'Belum ada data peta untuk filter ini (parameter/init cycle).';
+    } else {
+      const minLt = Math.min(...available);
+      const maxLt = Math.max(...available);
+      detail.innerHTML = `<strong>Data kosong</strong> untuk ${formatLeadTime(lt)}.<br>
+        Lead time tersedia: ${formatLeadTime(minLt)} – ${formatLeadTime(maxLt)} (${minLt}–${maxLt} jam).
+        ${lt > maxLt ? 'Perluas data NC/pipeline untuk lead lebih jauh.' : 'Geser slider ke rentang tersebut.'}`;
+    }
     return;
   }
+
   const maxRmse = Math.max(...data.map(d => d.rmse || 0), 0.01);
   stationMap.setStations(data.map(d => ({
     station_id: d.station_id,
@@ -303,89 +381,121 @@ async function loadMap() {
     rmse: d.rmse,
     color: d.rmse < maxRmse * 0.33 ? '#16a34a' : d.rmse < maxRmse * 0.66 ? '#ca8a04' : '#dc2626',
   })));
-  document.getElementById('mapDetail').textContent = 'Klik stasiun pada peta untuk melihat fcst vs obs.';
+  const detail = document.getElementById('mapDetail');
+  if (resolvedLt !== lt) {
+    detail.textContent = `Menampilkan lead time terdekat: ${formatLeadTime(resolvedLt)} (slider: ${formatLeadTime(lt)}). Klik stasiun untuk detail.`;
+  } else {
+    detail.textContent = `${data.length} stasiun · ${formatLeadTime(lt)}. Klik stasiun untuk fcst vs obs.`;
+  }
 }
 
-function stationDetailQuery() {
-  const init = selectedInitTime();
-  const lt = document.getElementById('leadTime').value;
-  return `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
-}
-
-function downsampleSeries(series, maxPoints = 400) {
-  if (series.length <= maxPoints) return series;
-  const step = Math.ceil(series.length / maxPoints);
-  return series.filter((_, i) => i % step === 0);
+async function loadMap() {
+  try {
+    await ensureMapBulk();
+    renderMapFromCache();
+  } catch (e) {
+    document.getElementById('mapDetail').textContent = 'Gagal memuat peta: ' + e.message;
+  }
 }
 
 async function showStationMapDetail(stationId, param, init) {
-  const lt = document.getElementById('leadTime').value;
-  const q = `parameter=${param}&models=${modelsQuery()}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
+  const q = `parameter=${param}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
   const data = await api(`/api/station/${stationId}/detail?${q}`);
-  const paired = data.series.filter(s => s.obs != null && selectedModels().some(m => s[m] != null));
-  const latest = paired.slice(-1)[0] || {};
-  let html = `<strong>${data.station.name || stationId}</strong><table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>`;
+  const lt = +document.getElementById('leadTime').value;
+  const available = data.available_lead_times || data.series.map(s => s.lead_time);
+  const resolvedLt = available.includes(lt) ? lt : nearestLeadTime(available, lt);
+  const row = data.series.find(s => s.lead_time === resolvedLt) || data.series.slice(-1)[0] || {};
+  let html = `<strong>${data.station.name || stationId}</strong> · ${formatLeadTime(row.lead_time ?? lt)}<br>`;
+  html += `<span class="time-utc">${formatTimeDual(row.valid_time)}</span><table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>`;
   selectedModels().forEach(m => {
-    const err = latest[m] != null && latest.obs != null ? (latest[m] - latest.obs).toFixed(3) : '—';
-    html += `<tr><td>${m}</td><td>${latest[m]?.toFixed(2) ?? '—'}</td><td>${latest.obs?.toFixed(2) ?? '—'}</td><td>${err}</td></tr>`;
+    const err = row[m] != null && row.obs != null ? (row[m] - row.obs).toFixed(3) : '—';
+    html += `<tr><td>${m}</td><td>${row[m]?.toFixed(2) ?? '—'}</td><td>${row.obs?.toFixed(2) ?? '—'}</td><td>${err}</td></tr>`;
   });
   document.getElementById('mapDetail').innerHTML = html + '</table>';
 }
 
-async function loadStationDetail() {
-  const stationId = document.getElementById('stationSelect').value;
+function stationDetailQuery() {
+  const init = selectedInitTime();
+  return `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
+}
+
+function renderStationFromCache() {
+  const data = stationDetailCache.data;
+  if (!data) return loadStationDetail();
   const param = document.getElementById('parameter').value;
-  const data = await api(`/api/station/${stationId}/detail?${stationDetailQuery()}`);
-  const plotSeries = downsampleSeries(data.series);
+  const stationId = document.getElementById('stationSelect').value;
+  const lt = +document.getElementById('leadTime').value;
+  const rows = data.series || [];
+  const available = data.available_lead_times || rows.map(r => r.lead_time);
+  const resolvedLt = available.includes(lt) ? lt : nearestLeadTime(available, lt);
 
   const series = [{
     name: 'Observasi',
     color: MODEL_COLORS.Observasi,
-    width: 1,
-    x: plotSeries.map(s => s.valid_time?.slice(0, 16)),
-    y: plotSeries.map(s => s.obs),
+    width: 2,
+    x: rows.map(s => s.lead_time),
+    y: rows.map(s => s.obs),
   }];
-
   selectedModels().forEach(m => {
     series.push({
       name: m,
       color: MODEL_COLORS[m] || '#00529B',
-      x: plotSeries.filter(s => s[m] != null).map(s => s.valid_time?.slice(0, 16)),
-      y: plotSeries.filter(s => s[m] != null).map(s => s[m]),
+      x: rows.filter(s => s[m] != null).map(s => s.lead_time),
+      y: rows.filter(s => s[m] != null).map(s => s[m]),
     });
   });
 
-  const initNote = data.init_time ? ` · init ${String(data.init_time).slice(0, 16)}` : '';
-  const ltNote = data.lead_time != null ? ` · ${formatLeadTime(Number(data.lead_time))}` : '';
+  const initNote = data.init_time ? ` · init ${formatTimeWIB(data.init_time)}` : '';
   stationChart.setLines({
-    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label}${initNote}${ltNote}`,
-    xLabel: 'Valid Time (UTC)',
+    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label}${initNote}`,
+    xLabel: 'Lead Time (jam)',
     yLabel: paramsMeta[param]?.unit || '',
+    xNumeric: true,
+    highlightX: resolvedLt,
     series,
   });
 
-  const paired = data.series.filter(s =>
-    s.obs != null && selectedModels().some(m => s[m] != null)
-  ).slice(-20).reverse();
-
-  if (!paired.length) {
+  if (!rows.length) {
     document.getElementById('stationTable').innerHTML =
       '<em>Belum ada pasangan fcst+obs untuk stasiun/parameter/init cycle ini.</em>';
     return;
   }
 
-  let html = '<table><tr><th>Valid Time</th><th>Obs</th>';
+  let html = '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Lead Time</th><th>Waktu Valid (WIB)</th><th>Obs</th>';
   selectedModels().forEach(m => { html += `<th>${m}</th><th>Err ${m}</th>`; });
-  html += '</tr>';
-  paired.forEach(s => {
-    html += `<tr><td>${s.valid_time?.slice(0, 16)}</td><td>${s.obs?.toFixed(2) ?? '—'}</td>`;
+  html += '</tr></thead><tbody>';
+  rows.forEach(s => {
+    const isHi = resolvedLt != null && s.lead_time === resolvedLt;
+    html += `<tr data-lead="${s.lead_time}" class="${isHi ? 'lt-highlight' : ''}">`;
+    html += `<td>${formatLeadTime(s.lead_time)}</td>`;
+    html += `<td>${formatTimeDual(s.valid_time)}</td>`;
+    html += `<td>${s.obs?.toFixed(2) ?? '—'}</td>`;
     selectedModels().forEach(m => {
       const err = s[m] != null && s.obs != null ? (s[m] - s.obs).toFixed(2) : '—';
       html += `<td>${s[m]?.toFixed(2) ?? '—'}</td><td>${err}</td>`;
     });
     html += '</tr>';
   });
-  document.getElementById('stationTable').innerHTML = html + '</table>';
+  html += '</tbody></table></div>';
+  if (resolvedLt != null && resolvedLt !== lt) {
+    html = `<p class="lt-note">Slider ${formatLeadTime(lt)} → baris terdekat ${formatLeadTime(resolvedLt)}.</p>` + html;
+  } else if (resolvedLt != null) {
+    html = `<p class="lt-note">Baris biru = lead time slider (${formatLeadTime(resolvedLt)}).</p>` + html;
+  }
+  document.getElementById('stationTable').innerHTML = html;
+
+  const hiRow = document.querySelector(`#stationTable tr[data-lead="${resolvedLt}"]`);
+  if (hiRow) hiRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+async function loadStationDetail() {
+  const stationId = document.getElementById('stationSelect').value;
+  const key = `${stationId}|${stationDetailQuery()}`;
+  if (stationDetailCache.key !== key) {
+    stationDetailCache.data = await api(`/api/station/${stationId}/detail?${stationDetailQuery()}`);
+    stationDetailCache.key = key;
+  }
+  renderStationFromCache();
 }
 
 init().catch(console.error);

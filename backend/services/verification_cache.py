@@ -152,6 +152,27 @@ def load_verification_station_scores(
     return df
 
 
+def load_verification_station_scores_bulk(
+    model: str,
+    parameter: str,
+    init_time: str | None = None,
+) -> pd.DataFrame:
+    """All lead times for one model/parameter — served once, filtered di frontend."""
+    init_verification_cache_db()
+    conn = get_db()
+    q = """SELECT lead_time, station_id, bias, rmse, mae, n_cases, obs_mean, fcst_mean
+           FROM verification_station_scores
+           WHERE model=? AND parameter=?"""
+    params: list[Any] = [model, parameter]
+    if init_time:
+        q += " AND init_time=?"
+        params.append(init_time)
+    q += " ORDER BY lead_time, station_id"
+    df = pd.read_sql_query(q, conn, params=params)
+    conn.close()
+    return df
+
+
 def _models_key(models: list[str]) -> str:
     return ",".join(sorted(m.strip() for m in models if m.strip()))
 
