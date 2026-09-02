@@ -34,7 +34,7 @@ Data model diverifikasi terhadap **observasi stasiun sinoptik BMKG** (format tit
 | litbangweb deploy | Awalnya direncanakan, **dibatalkan** — litbangweb **tidak punya akses internet** |
 | Cloud Agent | Tidak bisa akses `C:\Users\husei\...` — hanya VM Linux remote |
 | Opsi B (dipilih) | Develop & run di **PC BMKG lokal** + Cursor **Local Agent** |
-| Deploy produksi | Server **PSIMKG** → `https://psimkg.bmkg.go.id/verifikasi-inanwp/` |
+| Deploy produksi | Server **PSIMKG** → `https://psimkg.bmkg.go.id/monas/` |
 
 ---
 
@@ -251,17 +251,17 @@ SFTP_PASSWORD=<isi di .env>
 
 ---
 
-## 11. Deploy PSIMKG (portal sub-app)
+## 11. Deploy PSIMKG (portal sub-app MONAS)
 
 | Item | Nilai |
 |------|-------|
-| Deploy path | `/var/www/verifikasi-inanwp` |
-| URL publik | https://psimkg.bmkg.go.id/verifikasi-inanwp/ |
-| Apache snippet | `deploy/apache-verifikasi-inanwp.conf` |
-| PM2 | `ecosystem.config.cjs` |
-| Panduan | `DEPLOY_PSIMKG.md`, `SETUP_LOCAL.md` |
+| Deploy path | `/var/www/monas` |
+| URL publik | https://psimkg.bmkg.go.id/monas/ |
+| Apache snippet | `deploy/apache-monas.conf` |
+| PM2 | `ecosystem.config.cjs` (`monas-api`, `monas-web`) |
+| Panduan | `DEPLOY_MONAS.md`, `SETUP_LOCAL.md` |
 
-Dev lokal dulu di PC BMKG → `git push` → `git pull` di server → `./deploy_psimkg.sh`
+Dev lokal dulu di PC BMKG → `git push` → `git pull` di server → `./deploy_monas.sh`
 
 ---
 

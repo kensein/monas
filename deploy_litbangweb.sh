@@ -26,7 +26,10 @@ INANWP_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
 INACAWO_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
 GFS_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
 IFS_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
+OFFLINE_OBS_MODE=true
+LITBANGWEB_OBS_DIR=/opt/lampp/htdocs/monas/obs
 FORCE_PIPELINE=true
+SEED_DEMO_DATA=false
 BMKG_USERNAME=psimkg
 ENV
 

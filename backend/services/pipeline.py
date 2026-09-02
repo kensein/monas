@@ -222,7 +222,10 @@ def load_verification_scores(
 
 
 def _ensure_observations(init_time: str, progress_cb: Callable[[float, str], None] | None) -> dict[str, Any]:
-    """Fetch BMKG Sinoptik obs for init cycle if cache is empty or stale."""
+    """Fetch/import observasi untuk init cycle. litbangweb: dari JSON lokal; PC/webpsi: BMKG API."""
+    from backend.config import LITBANGWEB_OBS_DIR, OFFLINE_OBS_MODE
+    from backend.services.obs_sync import import_obs_from_json_dir
+
     obs_df = load_observations()
     init_dt = datetime.fromisoformat(init_time.replace("Z", ""))
     window_start = (init_dt - timedelta(hours=6)).isoformat()
@@ -237,6 +240,20 @@ def _ensure_observations(init_time: str, progress_cb: Callable[[float, str], Non
 
     if has_window:
         return {"skipped": True, "records_saved": len(obs_df)}
+
+    # litbangweb offline: import JSON yang di-upload dari PC lokal
+    if OFFLINE_OBS_MODE or Path(LITBANGWEB_OBS_DIR).is_dir():
+        if progress_cb:
+            progress_cb(55, f"Import observasi JSON dari {LITBANGWEB_OBS_DIR}...")
+        imported = import_obs_from_json_dir(LITBANGWEB_OBS_DIR)
+        obs_df = load_observations()
+        if not obs_df.empty:
+            return {"source": "json_dir", **imported}
+        if OFFLINE_OBS_MODE:
+            raise ValueError(
+                f"OFFLINE_OBS_MODE: tidak ada observasi di {LITBANGWEB_OBS_DIR}. "
+                "Jalankan fetch_obs_local.py --sync di PC lokal."
+            )
 
     if progress_cb:
         progress_cb(55, f"Fetch observasi BMKG D+0–D+7 untuk init {init_time}...")

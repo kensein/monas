@@ -2,7 +2,7 @@
 # Sync NC files dari litbangweb → server PSIMKG
 #
 # Cron (setiap 6 jam):
-#   0 */6 * * * /var/www/verifikasi-inanwp/scripts/sync_nc_from_litbangweb.sh
+#   0 */6 * * * /var/www/monas/scripts/sync_nc_from_litbangweb.sh
 #
 # Env: baca dari .env di project root
 

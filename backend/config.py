@@ -14,7 +14,13 @@ OBS_DIR = DATA_DIR / "obs"
 CACHE_DIR = DATA_DIR / "cache"
 DB_PATH = DATA_DIR / "nwp_verify.db"
 
-for d in (NC_DIR, OBS_DIR, CACHE_DIR):
+# Folder export observasi di PC lokal (download BMKG API → SCP ke litbangweb)
+OBS_EXPORT_DIR = os.getenv(
+    "OBS_EXPORT_DIR",
+    str(Path("D:/nwp-data/obs") if os.name == "nt" else DATA_DIR / "obs_export"),
+)
+
+for d in (NC_DIR, OBS_DIR, CACHE_DIR, Path(OBS_EXPORT_DIR)):
     d.mkdir(parents=True, exist_ok=True)
 
 API_PORT = int(os.getenv("API_PORT", "8013"))
@@ -46,7 +52,11 @@ SFTP_HOST = os.getenv("SFTP_HOST", "202.90.199.54")
 SFTP_PORT = int(os.getenv("SFTP_PORT", "3346"))
 SFTP_USER = os.getenv("SFTP_USER", "litbangweb")
 SFTP_PASSWORD = os.getenv("SFTP_PASSWORD", "_Pusl1tb4ng.123_")
-SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/monas")
+SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/monas/obs")
+
+# litbangweb: baca obs dari folder JSON (tanpa BMKG API — server tanpa internet)
+LITBANGWEB_OBS_DIR = os.getenv("LITBANGWEB_OBS_DIR", SFTP_OBS_PATH)
+OFFLINE_OBS_MODE = os.getenv("OFFLINE_OBS_MODE", "false").lower() in ("1", "true", "yes")
 
 # Model NC paths on litbangweb server (auto-sync, NO user upload)
 # Dashboard reads directly from these paths when deployed on litbangweb

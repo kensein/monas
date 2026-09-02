@@ -9,9 +9,7 @@ Panduan menjalankan dashboard verifikasi NWP di **komputer lokal Anda** dengan *
 | Lingkungan | URL |
 |------------|-----|
 | **Dev lokal (PC BMKG)** | http://localhost:3013 |
-| **Produksi (server PSIMKG)** | https://psimkg.bmkg.go.id/verifikasi-inanwp/ |
-
-> Bukan `/monas` — subpath resmi di portal PSIMKG adalah **`/verifikasi-inanwp`**.
+| **Produksi (server PSIMKG)** | https://psimkg.bmkg.go.id/monas/ |
 
 ---
 
@@ -25,25 +23,32 @@ litbangweb (tanpa internet)
                                                     │
                                     BMKG API Sinoptik (intranet bmkgsatu)
                                                     │
-                              git push ──► server PSIMKG (/var/www/verifikasi-inanwp)
+                              git push ──► server PSIMKG (/var/www/monas)
 ```
 
 ---
 
 ## Langkah 1 — Pull repo dari GitHub (PC lokal)
 
+Repo lokal Anda mungkin **belum punya script terbaru**. Wajib pull dulu:
+
 ```cmd
-cd C:\Users\husei\Projects
-git clone https://github.com/kensein/monas.git
-cd monas
+cd C:\Users\husei\OneDrive\Documents\Project\monas
+git fetch origin
+git pull
+```
+
+Jika `git pull` error / branch lama, checkout branch terbaru:
+```cmd
+git fetch origin
 git checkout cursor/psimkg-verifikasi-inanwp-deploy-3ba0
 git pull
 ```
 
-Update rutin sebelum coding:
+Verifikasi script ada:
 ```cmd
-cd C:\Users\husei\Projects\monas
-git pull
+dir scripts\test_nc_pipeline.py
+dir scripts\fetch_obs_local.py
 ```
 
 ---
@@ -111,7 +116,22 @@ start.bat
 
 ---
 
-## Langkah 6 — Test pipeline NC 12GB
+## Langkah 6b — Observasi: download lokal → SFTP litbangweb
+
+litbangweb **tidak bisa** akses BMKG API. Download di PC Anda, lalu upload otomatis:
+
+```cmd
+mkdir D:\nwp-data\obs
+python scripts\fetch_obs_local.py --days 10 --sync
+```
+
+Atau double-click: `scripts\fetch_and_sync_obs.bat`
+
+Detail: `docs/OBS_SYNC.md`
+
+---
+
+## Langkah 7 — Test pipeline NC 12GB
 
 ```cmd
 python scripts\test_nc_pipeline.py --inspect
@@ -122,25 +142,25 @@ python scripts\test_nc_pipeline.py --full
 
 ## Langkah 7 — Deploy ke server PSIMKG (nanti)
 
-Deploy path: `/var/www/verifikasi-inanwp`  
-Publik: `https://psimkg.bmkg.go.id/verifikasi-inanwp/`
+Deploy path: `/var/www/monas`  
+Publik: `https://psimkg.bmkg.go.id/monas/`
 
 Di server (setelah git clone):
 ```bash
-cd /var/www/verifikasi-inanwp
-chmod +x deploy_psimkg.sh scripts/*.sh
-./deploy_psimkg.sh
+cd /var/www/monas
+chmod +x deploy_monas.sh scripts/*.sh
+./deploy_monas.sh
 ```
 
 Admin portal tambahkan snippet Apache **sebelum** catch-all `:3001`:
 ```
-deploy/apache-verifikasi-inanwp.conf
+deploy/apache-monas.conf
 ```
 
-PM2 apps: `verifikasi-inanwp-api` (:8013) + `verifikasi-inanwp-web` (:3013)  
+PM2 apps: `monas-api` (:8013) + `monas-web` (:3013)  
 Bind **127.0.0.1** saja — tidak expose ke internet langsung.
 
-Detail lengkap: `DEPLOY_PSIMKG.md`
+Detail lengkap: `DEPLOY_MONAS.md`
 
 ---
 
@@ -161,7 +181,7 @@ Detail lengkap: `DEPLOY_PSIMKG.md`
 
 ## Checklist cepat
 
-- [ ] `git pull` branch `cursor/psimkg-verifikasi-inanwp-deploy-3ba0`
+- [ ] `git pull` repo monas
 - [ ] `.env` diisi (BMKG password + LOCAL_NC_PATH)
 - [ ] `pip install -r requirements.txt`
 - [ ] `start.bat` → http://localhost:3013
