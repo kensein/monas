@@ -80,7 +80,8 @@ def main() -> None:
         else:
             hash_stations.append(info)
 
-    print(f"  Total stasiun unik : {len(wmo_stations) + len(hash_stations)}")
+    hash_stations.sort(key=lambda x: -x["n_rows"])
+    wmo_stations.sort(key=lambda x: x["station_id"])
     print(f"  Pakai WMO (5 digit) : {len(wmo_stations)}  → ikut verifikasi jika ada pasangan fcst")
     print(f"  Pakai hash ID       : {len(hash_stations)}  → TIDAK ikut verifikasi")
 
