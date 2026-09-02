@@ -244,9 +244,18 @@ def read_point_forecast(
     use_chunks = nc_path.stat().st_size > NC_CHUNK_THRESHOLD_BYTES
     chunk_kw: dict[str, Any] = {}
     if use_chunks:
-        chunk_kw["chunks"] = "auto"
+        try:
+            import dask  # noqa: F401
+            chunk_kw["chunks"] = {"Time": 1}
+        except ImportError:
+            # Tanpa dask: buka tanpa chunk (12GB — butuh RAM cukup atau install dask)
+            chunk_kw = {}
 
-    ds = xr.open_dataset(nc_path, **chunk_kw)
+    try:
+        ds = xr.open_dataset(nc_path, engine="netcdf4", **chunk_kw)
+    except ImportError:
+        # dask terpasang tapi chunk manager tidak — buka tanpa chunk
+        ds = xr.open_dataset(nc_path, engine="netcdf4")
     lats, lons = _get_coords(ds)
     time_dim = _get_time_dim(ds)
     lead_times = _get_lead_times(ds, init_time, time_dim)

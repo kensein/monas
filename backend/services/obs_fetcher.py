@@ -122,10 +122,17 @@ def sync_observations_recent(days: int = 10) -> dict[str, Any]:
 
 
 def upsert_stations_from_records(records: list[dict[str, Any]]) -> None:
+    from backend.services.obs_format import flatten_sinoptik_records, _station_id_from_row
+
     conn = get_db()
     seen = set()
-    for rec in records:
-        sid = str(rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id") or "")
+    flat = flatten_sinoptik_records(records) if records and not isinstance(records[0], dict) else records
+    for rec in flat:
+        if not isinstance(rec, dict):
+            continue
+        sid = _station_id_from_row(rec) or str(
+            rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id") or ""
+        )
         if not sid or sid in seen:
             continue
         seen.add(sid)
@@ -158,6 +165,9 @@ def normalize_obs_records(records: list[Any]) -> pd.DataFrame:
             rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id")
             or rec.get("stationWmoId") or rec.get("wmo") or ""
         )
+        if not station_id and rec.get("station_name"):
+            from backend.services.obs_format import _station_id_from_row
+            station_id = _station_id_from_row(rec)
         valid_time = (
             rec.get("data_timestamp") or rec.get("valid_time") or rec.get("timestamp")
             or rec.get("observation_time") or rec.get("time")
