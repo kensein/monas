@@ -196,24 +196,44 @@ def public_config() -> dict[str, Any]:
 @app.get("/api/stations/coverage")
 def stations_coverage() -> dict[str, Any]:
     """Cek stasiun observasi yang tidak match katalog WMO."""
-    from backend.services.station_catalog import catalog_coverage_report, load_station_catalog
+    from backend.services.station_catalog import load_station_catalog
     from backend.services.obs_fetcher import get_db
 
     conn = get_db()
     rows = conn.execute(
-        "SELECT DISTINCT station_id FROM observations"
+        """SELECT o.station_id, COUNT(*) AS n_rows,
+                  MIN(o.valid_time) AS t_min, MAX(o.valid_time) AS t_max,
+                  s.name
+           FROM observations o
+           LEFT JOIN stations s ON s.station_id = o.station_id
+           GROUP BY o.station_id"""
     ).fetchall()
     conn.close()
-    # Ambil nama dari katalog + stations table
-    st = get_stations()
-    obs_ids = {r[0] for r in rows}
-    # Stasiun obs dengan ID hash (bukan 5 digit WMO)
-    hash_ids = [sid for sid in obs_ids if not (str(sid).isdigit() and len(str(sid)) == 5)]
+
+    def _is_wmo(sid: str) -> bool:
+        return str(sid).isdigit() and len(str(sid)) == 5
+
+    wmo_list, hash_list = [], []
+    for r in rows:
+        item = {
+            "station_id": r["station_id"],
+            "name": r["name"],
+            "n_rows": r["n_rows"],
+            "valid_from": r["t_min"],
+            "valid_to": r["t_max"],
+        }
+        if _is_wmo(r["station_id"]):
+            wmo_list.append(item)
+        else:
+            hash_list.append(item)
+
     return {
         "catalog_size": len(load_station_catalog()),
-        "obs_station_ids": len(obs_ids),
-        "obs_unmatched_hash_ids": len(hash_ids),
-        "obs_unmatched_sample": hash_ids[:20],
+        "obs_stations_wmo": len(wmo_list),
+        "obs_stations_hash": len(hash_list),
+        "hash_stations": sorted(hash_list, key=lambda x: -x["n_rows"])[:50],
+        "wmo_sample": wmo_list[:10],
+        "hint": "Hash ID = stasiun tidak match katalog saat import; tidak ikut join verifikasi.",
     }
 
 
