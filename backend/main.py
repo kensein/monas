@@ -18,6 +18,7 @@ from backend.config import (
     MAX_LEAD_TIME_HOURS,
     MODELS,
     SEED_DEMO_DATA,
+    SERVE_READONLY,
     VERIFY_PARAMETERS,
 )
 from backend.services.bmkg_auth import login, token_status
@@ -67,9 +68,25 @@ async def startup() -> None:
     import os
     init_db()
     init_pipeline_db()
+    from backend.services.artifacts import init_station_series_cache
     from backend.services.verification_cache import cache_is_stale, init_verification_cache_db, rebuild_dashboard_cache
     init_verification_cache_db()
-    if cache_is_stale():
+    init_station_series_cache()
+
+    # webpsi readonly: auto-import artifact terbaru jika ada
+    if SERVE_READONLY:
+        from pathlib import Path
+        from backend.config import ARTIFACTS_DIR
+        latest = ARTIFACTS_DIR / "latest" / "dashboard.sqlite"
+        if latest.is_file():
+            try:
+                from backend.services.artifacts import import_light_artifacts
+                import_light_artifacts(ARTIFACTS_DIR / "latest")
+                print("[startup] imported light artifacts (SERVE_READONLY)")
+            except Exception as e:
+                print(f"[startup] artifact import skipped: {e}")
+
+    if not SERVE_READONLY and cache_is_stale():
         job = create_job("cache_rebuild")
         run_in_background(job.id, rebuild_dashboard_cache)
     from backend.services.station_catalog import sync_catalog_to_db
@@ -78,19 +95,22 @@ async def startup() -> None:
     except sqlite3.OperationalError:
         pass  # pipeline/scheduler may hold lock briefly at startup
     from backend.services.pipeline import load_verification_scores
-    if SEED_DEMO_DATA and load_verification_scores().empty:
+    if not SERVE_READONLY and SEED_DEMO_DATA and load_verification_scores().empty:
         generate_demo_data()
-    start_scheduler()
-    # Local mode: scan NC lokal sekali (tanpa SFTP) bila path ada
-    force = os.getenv("FORCE_PIPELINE", "").lower() == "true"
-    local_paths = [
-        os.getenv("INANWP_NC_PATH", ""),
-        LOCAL_NC_PATH,
-    ]
-    has_local = any(p and __import__("pathlib").Path(p).exists() for p in local_paths)
-    if (force or has_local) and os.getenv("DISABLE_STARTUP_PIPELINE", "false").lower() not in ("1", "true", "yes"):
-        job = create_job("pipeline_scan")
-        run_in_background(job.id, run_full_pipeline)
+    if SERVE_READONLY:
+        print("[startup] SERVE_READONLY=true — pipeline/scheduler dimatikan")
+    else:
+        start_scheduler()
+        # Local mode: scan NC lokal sekali (tanpa SFTP) bila path ada
+        force = os.getenv("FORCE_PIPELINE", "").lower() == "true"
+        local_paths = [
+            os.getenv("INANWP_NC_PATH", ""),
+            LOCAL_NC_PATH,
+        ]
+        has_local = any(p and __import__("pathlib").Path(p).exists() for p in local_paths)
+        if (force or has_local) and os.getenv("DISABLE_STARTUP_PIPELINE", "false").lower() not in ("1", "true", "yes"):
+            job = create_job("pipeline_scan")
+            run_in_background(job.id, run_full_pipeline)
 
 
 @app.post("/api/obs/sync-recent")
@@ -102,7 +122,10 @@ async def sync_recent_obs(days: int = Query(10, ge=1, le=30)) -> dict[str, Any]:
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "nwp-verification"}
+    return {
+        "status": "ok",
+        "mode": "readonly" if SERVE_READONLY else "nwp-verification",
+    }
 
 
 @app.get("/api/pipeline/status")
@@ -117,6 +140,11 @@ def pipeline_inventory() -> dict[str, Any]:
 
 @app.post("/api/pipeline/run")
 def pipeline_run() -> dict[str, Any]:
+    if SERVE_READONLY:
+        raise HTTPException(
+            status_code=403,
+            detail="SERVE_READONLY: verifikasi dijalankan di PC/HPC, sync artifact ke webpsi",
+        )
     job = create_job("pipeline")
     run_in_background(job.id, run_full_pipeline)
     return {"job_id": job.id, "message": "Pipeline verifikasi HARP dijalankan di background"}
@@ -331,6 +359,7 @@ def station_detail(
     init_time: str | None = None,
     lead_time: int | None = None,
 ) -> dict[str, Any]:
+    from backend.services.artifacts import load_station_series_cache
     from backend.services.obs_fetcher import load_forecasts
     from backend.services.pipeline import get_available_cycles
     from backend.services.time_utils import normalize_valid_time
@@ -342,6 +371,32 @@ def station_detail(
         if done:
             resolved_init = done[0]["init_time"]
 
+    st = get_stations()
+    info = st[st["station_id"] == station_id]
+    station_info = info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id}
+
+    # Fast path: precomputed light series (webpsi readonly / setelah export)
+    cached = load_station_series_cache(station_id, parameter, resolved_init)
+    if cached:
+        series = []
+        for row in cached:
+            entry = {"lead_time": row["lead_time"], "valid_time": row.get("valid_time")}
+            if "obs" in row:
+                entry["obs"] = row["obs"]
+            for m in model_list:
+                if m in row:
+                    entry[m] = row[m]
+            series.append(entry)
+        return {
+            "station": station_info,
+            "parameter": parameter,
+            "init_time": resolved_init,
+            "available_lead_times": [s["lead_time"] for s in series],
+            "series": series,
+            "source": "cache",
+        }
+
+    # Fallback: raw forecasts + obs (PC compute machine)
     obs_df = load_observations(parameters=[parameter], station_id=station_id)
     if obs_df.empty:
         obs_df = obs_df.assign(valid_time=pd.Series(dtype=str))
@@ -359,7 +414,7 @@ def station_detail(
     obs_sub = obs_df[["valid_time", "value"]].drop_duplicates("valid_time").rename(columns={"value": "obs"})
     obs_map = dict(zip(obs_sub["valid_time"], obs_sub["obs"])) if not obs_sub.empty else {}
 
-    series: list[dict[str, Any]] = []
+    series = []
     available_lead_times: list[int] = []
     if not fcst_df.empty:
         fcst_df = fcst_df.copy()
@@ -382,14 +437,13 @@ def station_detail(
             if "obs" in entry or any(m in entry for m in model_list):
                 series.append(entry)
 
-    st = get_stations()
-    info = st[st["station_id"] == station_id]
     return {
-        "station": info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id},
+        "station": station_info,
         "parameter": parameter,
         "init_time": resolved_init,
         "available_lead_times": available_lead_times,
         "series": series,
+        "source": "live",
     }
 
 

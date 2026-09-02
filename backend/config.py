@@ -12,6 +12,7 @@ DATA_DIR = BASE_DIR / "data"
 NC_DIR = DATA_DIR / "nc"
 OBS_DIR = DATA_DIR / "obs"
 CACHE_DIR = DATA_DIR / "cache"
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR", str(DATA_DIR / "artifacts")))
 DB_PATH = DATA_DIR / "nwp_verify.db"
 
 # Folder export observasi di PC lokal (download BMKG API → SCP ke litbangweb)
@@ -23,7 +24,7 @@ OBS_EXPORT_DIR = os.getenv(
 # Rentang default fetch observasi (--from-june): 1 Juni tahun berjalan → sekarang
 OBS_FETCH_START = os.getenv("OBS_FETCH_START", "").strip() or None
 
-for d in (NC_DIR, OBS_DIR, CACHE_DIR, Path(OBS_EXPORT_DIR)):
+for d in (NC_DIR, OBS_DIR, CACHE_DIR, ARTIFACTS_DIR, Path(OBS_EXPORT_DIR)):
     d.mkdir(parents=True, exist_ok=True)
 
 API_PORT = int(os.getenv("API_PORT", "8013"))
@@ -100,6 +101,21 @@ else:
 
 # Scheduler background pipeline (matikan di PC dev: ENABLE_PIPELINE_SCHEDULER=false)
 ENABLE_PIPELINE_SCHEDULER = os.getenv("ENABLE_PIPELINE_SCHEDULER", "true").lower() in ("1", "true", "yes")
+
+# webpsi/PSIMKG serve-only: jangan hitung ulang / jangan fetch NC / obs
+SERVE_READONLY = os.getenv("SERVE_READONLY", "false").lower() in ("1", "true", "yes")
+
+# Parallel verify (PC/HPC): proses beberapa model sekaligus
+PARALLEL_VERIFY = os.getenv("PARALLEL_VERIFY", "true").lower() in ("1", "true", "yes")
+PARALLEL_WORKERS = int(os.getenv("PARALLEL_WORKERS", "4"))
+# process = ProcessPoolExecutor (HPC); thread = ThreadPoolExecutor (aman SQLite Windows)
+PARALLEL_BACKEND = os.getenv("PARALLEL_BACKEND", "process" if os.name != "nt" else "thread").lower()
+
+# Sync artifact ke webpsi (PC daily job)
+WEBPSI_HOST = os.getenv("WEBPSI_HOST", "")
+WEBPSI_USER = os.getenv("WEBPSI_USER", "")
+WEBPSI_PATH = os.getenv("WEBPSI_PATH", "/var/www/monas/data/artifacts")
+WEBPSI_SSH_PORT = int(os.getenv("WEBPSI_SSH_PORT", "22"))
 
 # Obs dari JSON lokal (D:\nwp-data\obs) — jangan fetch BMKG API di scheduler
 USE_LOCAL_OBS_JSON = os.getenv("USE_LOCAL_OBS_JSON", "false").lower() in ("1", "true", "yes")

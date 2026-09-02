@@ -67,11 +67,14 @@ Semua kalkulasi verifikasi dijalankan **saat pipeline** (bukan saat buka website
 | `verification_scores` | Skor agregat per model × param × lead × init |
 | `verification_station_scores` | Skor per stasiun (peta kinerja BMKG) |
 | `ranking_cache` | Peringkat pre-compute |
+| `station_series_cache` | Time series ringan untuk Detail Stasiun |
 
-Dashboard **hanya membaca cache**. Operasi mingguan = verifikasi **init cycle baru saja** (incremental), bukan hitung ulang sejarah.
+Dashboard **hanya membaca cache**. **Flow harian PC→webpsi:** `docs/DAILY_PC_WEBPSI_FLOW.md` (Task Scheduler 03:00, parallel 4 model, artifact sync, `SERVE_READONLY` di webpsi).
 
 - Backfill otomatis saat startup jika skor ada tapi cache belum terisi
 - Backfill manual (sekali): `python scripts/rebuild_dashboard_cache.py`
+- Export artifact: `python scripts/export_light_artifacts.py`
+- Daily PC: `scripts/daily_verify_pc.bat`
 
 ## Retention (rencana produksi)
 

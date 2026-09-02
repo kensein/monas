@@ -38,8 +38,9 @@ def _scheduler_loop() -> None:
 
 def start_scheduler() -> None:
     global _scheduler_thread, _running
-    if not ENABLE_PIPELINE_SCHEDULER:
-        print("[pipeline] scheduler disabled (ENABLE_PIPELINE_SCHEDULER=false)")
+    from backend.config import SERVE_READONLY
+    if SERVE_READONLY or not ENABLE_PIPELINE_SCHEDULER:
+        print("[pipeline] scheduler disabled (SERVE_READONLY or ENABLE_PIPELINE_SCHEDULER=false)")
         return
     if _scheduler_thread and _scheduler_thread.is_alive():
         return
