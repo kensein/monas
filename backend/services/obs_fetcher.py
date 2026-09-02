@@ -26,8 +26,10 @@ from backend.services.time_utils import normalize_valid_time
 
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
@@ -328,11 +330,10 @@ def clear_verification_data() -> dict[str, int]:
 
 
 def get_stations() -> pd.DataFrame:
-    from backend.services.station_catalog import catalog_to_dataframe, sync_catalog_to_db
+    from backend.services.station_catalog import catalog_to_dataframe
 
     df = catalog_to_dataframe()
     if not df.empty:
-        sync_catalog_to_db()
         return df
 
     conn = get_db()

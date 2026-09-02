@@ -3,15 +3,21 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
+import threading
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from backend.config import BASE_DIR, DATA_DIR
+from backend.config import BASE_DIR
 
 DEFAULT_CATALOG_PATH = BASE_DIR / "backend" / "resources" / "stations_bmkg.json"
+
+_sync_lock = threading.Lock()
+_catalog_db_synced = False
 
 
 def _normalize_name(name: str) -> str:
@@ -87,22 +93,54 @@ def catalog_to_dataframe() -> pd.DataFrame:
     return df.drop_duplicates("station_id").reset_index(drop=True)
 
 
-def sync_catalog_to_db() -> int:
-    """Upsert semua stasiun katalog ke SQLite."""
-    from backend.services.obs_fetcher import get_db
-
-    df = catalog_to_dataframe()
-    if df.empty:
+def sync_catalog_to_db(force: bool = False) -> int:
+    """Upsert semua stasiun katalog ke SQLite (sekali saat startup / import)."""
+    global _catalog_db_synced
+    if _catalog_db_synced and not force:
         return 0
-    conn = get_db()
-    n = 0
-    for _, row in df.iterrows():
-        conn.execute(
-            """INSERT OR REPLACE INTO stations (station_id, wmo_id, name, lat, lon, region)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (row["station_id"], row["wmo_id"], row["name"], row["lat"], row["lon"], row["region"]),
-        )
-        n += 1
-    conn.commit()
-    conn.close()
-    return n
+
+    with _sync_lock:
+        if _catalog_db_synced and not force:
+            return 0
+
+        from backend.services.obs_fetcher import get_db
+
+        df = catalog_to_dataframe()
+        if df.empty:
+            return 0
+
+        rows = [
+            (row["station_id"], row["wmo_id"], row["name"], row["lat"], row["lon"], row["region"])
+            for _, row in df.iterrows()
+        ]
+
+        last_err: Exception | None = None
+        for attempt in range(5):
+            try:
+                conn = get_db()
+                conn.executemany(
+                    """INSERT OR REPLACE INTO stations (station_id, wmo_id, name, lat, lon, region)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    rows,
+                )
+                conn.commit()
+                conn.close()
+                _catalog_db_synced = True
+                return len(rows)
+            except sqlite3.OperationalError as e:
+                last_err = e
+                if "locked" not in str(e).lower():
+                    raise
+                time.sleep(0.2 * (attempt + 1))
+
+        if last_err:
+            raise last_err
+        return 0
+
+
+def invalidate_catalog_cache() -> None:
+    """Reset cache setelah update file katalog."""
+    global _catalog_db_synced
+    load_station_catalog.cache_clear()
+    _name_to_wmo_map.cache_clear()
+    _catalog_db_synced = False

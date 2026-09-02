@@ -1,6 +1,7 @@
 """FastAPI backend — display-only NWP verification dashboard."""
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 import pandas as pd
@@ -66,6 +67,11 @@ async def startup() -> None:
     import os
     init_db()
     init_pipeline_db()
+    from backend.services.station_catalog import sync_catalog_to_db
+    try:
+        sync_catalog_to_db()
+    except sqlite3.OperationalError:
+        pass  # pipeline/scheduler may hold lock briefly at startup
     from backend.services.pipeline import load_verification_scores
     if SEED_DEMO_DATA and load_verification_scores().empty:
         generate_demo_data()

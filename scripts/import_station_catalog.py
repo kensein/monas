@@ -62,6 +62,14 @@ def main() -> None:
     out.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"OK: {len(records)} stasiun → {out}")
 
+    from backend.services.station_catalog import invalidate_catalog_cache, sync_catalog_to_db
+    from backend.services.obs_fetcher import init_db
+
+    invalidate_catalog_cache()
+    init_db()
+    n = sync_catalog_to_db(force=True)
+    print(f"DB sync: {n} stasiun")
+
 
 if __name__ == "__main__":
     main()
