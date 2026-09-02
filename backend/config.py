@@ -20,6 +20,9 @@ OBS_EXPORT_DIR = os.getenv(
     str(Path("D:/nwp-data/obs") if os.name == "nt" else DATA_DIR / "obs_export"),
 )
 
+# Rentang default fetch observasi (--from-june): 1 Juni tahun berjalan → sekarang
+OBS_FETCH_START = os.getenv("OBS_FETCH_START", "").strip() or None
+
 for d in (NC_DIR, OBS_DIR, CACHE_DIR, Path(OBS_EXPORT_DIR)):
     d.mkdir(parents=True, exist_ok=True)
 

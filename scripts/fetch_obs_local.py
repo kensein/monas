@@ -4,8 +4,8 @@ Download observasi Sinoptik BMKG API v21 → simpan JSON → (opsional) upload k
 
 Contoh (PC BMKG):
   python scripts\fetch_obs_local.py --test-api
-  python scripts\fetch_obs_local.py --days 10
-  python scripts\fetch_obs_local.py --from 2026-07-01T00:00:00Z --to 2026-07-05T23:59:00Z --sync
+  python scripts\fetch_obs_local.py --from-june --monthly --sync --import-db
+  python scripts\fetch_obs_local.py --from 2026-06-01T00:00:00Z --to 2026-09-02T23:59:00Z --monthly --sync
 """
 from __future__ import annotations
 
@@ -61,20 +61,33 @@ async def _run_test_api(date_from: str, date_to: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch observasi BMKG → JSON → litbangweb")
-    parser.add_argument("--days", type=int, default=10, help="Hari terakhir (default 10)")
+    parser.add_argument("--days", type=int, default=10, help="Hari terakhir (default 10, diabaikan jika --from-june)")
     parser.add_argument("--from", dest="date_from", help="ISO date_from")
     parser.add_argument("--to", dest="date_to", help="ISO date_to")
+    parser.add_argument(
+        "--from-june",
+        action="store_true",
+        help="Fetch dari 1 Juni (OBS_FETCH_START di .env) sampai sekarang — isi gap grafik",
+    )
+    parser.add_argument(
+        "--monthly",
+        action="store_true",
+        help="Satu file JSON per bulan (disarankan untuk rentang panjang)",
+    )
     parser.add_argument("--sync", action="store_true", help="Upload ke litbangweb setelah download")
     parser.add_argument("--upload-only", action="store_true", help="Hanya upload JSON yang sudah ada")
     parser.add_argument("--import-db", action="store_true", help="Simpan juga ke SQLite lokal")
     parser.add_argument("--inspect-obs", metavar="FILE", help="Inspect struktur JSON observasi lokal")
+    parser.add_argument("--test-api", action="store_true", help="Test login + satu request export")
     parser.add_argument("--test-sftp", action="store_true", help="Test buat folder + write ke litbangweb")
     args = parser.parse_args()
 
     from backend.config import OBS_EXPORT_DIR, SFTP_OBS_PATH
     from backend.services.obs_sync import (
         SFTP_OBS_FALLBACK,
+        default_obs_fetch_start,
         fetch_and_export_sinoptik,
+        fetch_and_export_sinoptik_monthly,
         upload_obs_exports_to_litbangweb,
         _connect_sftp,
         _sftp_makedirs,
@@ -102,7 +115,11 @@ def main() -> None:
         transport.close()
         return
 
-    if args.date_from and args.date_to:
+    if args.from_june:
+        date_from = default_obs_fetch_start()
+        date_to = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"Rentang --from-june: {date_from} → {date_to}")
+    elif args.date_from and args.date_to:
         date_from, date_to = args.date_from, args.date_to
     else:
         end = datetime.utcnow()
@@ -111,7 +128,6 @@ def main() -> None:
         date_to = end.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if args.inspect_obs:
-        import json
         from backend.services.obs_format import flatten_sinoptik_records
         from backend.services.obs_fetcher import normalize_obs_records
         p = Path(args.inspect_obs)
@@ -143,23 +159,38 @@ def main() -> None:
         return
 
     print(f"Fetch {date_from} → {date_to} ...")
-    result = asyncio.run(
-        fetch_and_export_sinoptik(date_from, date_to, also_save_db=args.import_db)
-    )
-    print(f"  file    : {result['file']}")
-    print(f"  records : {result['records']}")
-    if result.get("warning"):
-        print(f"  WARNING : {result['warning']}")
+    if args.monthly:
+        result = asyncio.run(
+            fetch_and_export_sinoptik_monthly(date_from, date_to, also_save_db=args.import_db)
+        )
+        print(f"  bulan   : {result.get('months')}")
+        print(f"  records : {result.get('records')}")
+        for f in result.get("files", []):
+            print(f"    {Path(f['file']).name}  ({f.get('records', 0):,} rows)")
+    else:
+        result = asyncio.run(
+            fetch_and_export_sinoptik(date_from, date_to, also_save_db=args.import_db)
+        )
+        print(f"  file    : {result['file']}")
+        print(f"  records : {result['records']}")
+        if result.get("warning"):
+            print(f"  WARNING : {result['warning']}")
+
+    total_records = result.get("records", 0)
 
     if args.sync:
-        if result["records"] == 0:
-            print("Upload dilewati — file JSON kosong (0 records).")
+        if total_records == 0:
+            print("Upload dilewati — semua chunk 0 records.")
             print("Jalankan: python scripts\\fetch_obs_local.py --test-api")
             sys.exit(1)
         print("Upload ke litbangweb SFTP...")
-        up = upload_obs_exports_to_litbangweb(
-            files_filter=[Path(result["file"]).name],
-        )
+        if args.monthly and result.get("files"):
+            names = [Path(f["file"]).name for f in result["files"]]
+            up = upload_obs_exports_to_litbangweb(files_filter=names)
+        else:
+            up = upload_obs_exports_to_litbangweb(
+                files_filter=[Path(result["file"]).name],
+            )
         print(f"  uploaded: {up['uploaded']} file(s) → {up.get('remote_path')}")
         for f in up.get("files", []):
             print(f"    {f['local']} ({f['size']:,} bytes)")

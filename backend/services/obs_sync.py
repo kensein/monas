@@ -110,6 +110,85 @@ async def fetch_and_export_sinoptik(
     return result
 
 
+def _parse_iso_dt(s: str) -> datetime:
+    s = s.strip().replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return datetime.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")
+
+
+def default_obs_fetch_start() -> str:
+    """1 Juni tahun berjalan (UTC), atau OBS_FETCH_START dari .env."""
+    from backend.config import OBS_FETCH_START
+
+    if OBS_FETCH_START:
+        return OBS_FETCH_START if "T" in OBS_FETCH_START else f"{OBS_FETCH_START}T00:00:00Z"
+    year = datetime.utcnow().year
+    return f"{year}-06-01T00:00:00Z"
+
+
+def _month_ranges(date_from: datetime, date_to: datetime) -> list[tuple[datetime, datetime]]:
+    """Pecah rentang menjadi per bulan kalender (inklusif)."""
+    ranges: list[tuple[datetime, datetime]] = []
+    cursor = date_from.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if cursor < date_from:
+        cursor = date_from.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    while cursor <= date_to:
+        if cursor.month == 12:
+            next_month = cursor.replace(year=cursor.year + 1, month=1, day=1)
+        else:
+            next_month = cursor.replace(month=cursor.month + 1, day=1)
+        chunk_end = min(next_month - timedelta(seconds=1), date_to)
+        chunk_start = max(cursor, date_from)
+        if chunk_start <= chunk_end:
+            ranges.append((chunk_start, chunk_end))
+        cursor = next_month
+    return ranges
+
+
+async def fetch_and_export_sinoptik_monthly(
+    date_from: str,
+    date_to: str,
+    out_dir: Path | None = None,
+    also_save_db: bool = False,
+) -> dict[str, Any]:
+    """
+    Fetch observasi per bulan kalender → satu JSON per bulan.
+    Lebih aman untuk rentang panjang (Juni → sekarang) dan hindari gap di grafik.
+    """
+    start = _parse_iso_dt(date_from)
+    end = _parse_iso_dt(date_to)
+    out_dir = out_dir or _export_dir()
+    files: list[dict[str, Any]] = []
+    total_records = 0
+    total_db = 0
+
+    ranges = _month_ranges(start, end)
+    print(f"  Fetch {len(ranges)} bulan: {date_from[:10]} → {date_to[:10]}")
+
+    for i, (chunk_start, chunk_end) in enumerate(ranges, 1):
+        cf = chunk_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        ct = chunk_end.strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"  [{i}/{len(ranges)}] {cf[:10]} → {ct[:10]} ...")
+        result = await fetch_and_export_sinoptik(cf, ct, out_dir=out_dir, also_save_db=also_save_db)
+        files.append(result)
+        total_records += result.get("records", 0)
+        total_db += result.get("db_saved", 0)
+        if result.get("warning"):
+            print(f"    WARNING: {result['warning']}")
+
+    return {
+        "files": files,
+        "months": len(files),
+        "records": total_records,
+        "db_saved": total_db,
+        "date_from": date_from,
+        "date_to": date_to,
+    }
+
+
 def import_obs_from_json_dir(
     directory: str | Path | None = None,
     pattern: str = "sinoptik_*.json",
