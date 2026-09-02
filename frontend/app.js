@@ -131,8 +131,12 @@ async function loadMethodology() {
       </table>
       <h3>Quality Control</h3>
       <p>${m.qc}</p>
-      <h3>Ranking model</h3>
+      <h3>Ranking model (det_summary)</h3>
       <p>${m.ranking || ''}</p>
+      <h3>Skill score di HARP (bukan untuk ranking kontinu)</h3>
+      <table><tr><th>Konteks</th><th>Skor skill</th><th>Catatan</th></tr>
+      ${(m.skill_scores || []).map(s => `<tr><td>${s.context}</td><td><code>${s.scores}</code></td><td>${s.note}</td></tr>`).join('')}
+      </table>
       <h3>Implementasi MONAS</h3>
       <ul>
         <li>Interpolasi: ${m.implementation.interpolation}</li>
@@ -223,9 +227,9 @@ async function loadOverview() {
     <div class="rank-card rank-${r.rank}">
       <div class="rank-num">#${r.rank}</div>
       <div class="model-name">${r.model} ${modelBadge(r.model)}</div>
-      <div class="metric">Mean RMSE: <strong>${r.mean_rmse?.toFixed(3)}</strong></div>
-      <div class="metric">MAE: ${r.mean_mae?.toFixed(3)} · r: ${r.mean_correlation?.toFixed(3)}</div>
-      <div class="metric">Skill: ${r.skill_score?.toFixed(4)}</div>
+      <div class="metric">Mean RMSE: <strong>${r.mean_rmse?.toFixed(3)}</strong> · MAE: ${r.mean_mae?.toFixed(3)}</div>
+      <div class="metric">Bias: ${r.mean_bias?.toFixed(3)} · stde: ${r.mean_stde?.toFixed(3)} · r: ${r.mean_correlation?.toFixed(3)}</div>
+      <div class="metric muted">Skor HARP det_summary (mean lintas param × lead time)</div>
     </div>`).join('');
 
   Plotly.newPlot('rankingChart', [{
@@ -237,7 +241,7 @@ async function loadOverview() {
     textposition: 'auto',
   }], {
     ...PLOT_LAYOUT,
-    title: 'Ranking Model HARP — Mean RMSE (semakin kecil semakin baik)',
+    title: 'Ranking HARP det_verify — Mean RMSE (metrik utama, semakin kecil semakin baik)',
     yaxis: { ...PLOT_LAYOUT.yaxis, title: 'Mean RMSE' },
   }, { responsive: true });
 

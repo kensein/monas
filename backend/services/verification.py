@@ -114,7 +114,7 @@ def compute_ranking(
     score: str = "rmse",
     lower_is_better: bool = True,
 ) -> list[dict[str, Any]]:
-    """Rank models by aggregated skill across parameters and lead times."""
+    """Rank models by HARP det_summary_scores aggregated across parameters and lead times."""
     if not results:
         return []
 
@@ -123,19 +123,19 @@ def compute_ranking(
         mean_rmse=("rmse", "mean"),
         mean_mae=("mae", "mean"),
         mean_bias=("bias", "mean"),
+        mean_stde=("stde", "mean"),
         mean_correlation=("correlation", "mean"),
         total_cases=("n_cases", "sum"),
         total_stations=("n_stations", "max"),
     ).reset_index()
 
-    col = f"mean_{score}" if score in ("rmse", "mae", "bias", "correlation") else "mean_rmse"
+    col = f"mean_{score}" if score in ("rmse", "mae", "bias", "stde", "correlation") else "mean_rmse"
     if col not in agg.columns:
         col = "mean_rmse"
 
     ascending = lower_is_better if score != "correlation" else False
     agg = agg.sort_values(col, ascending=ascending).reset_index(drop=True)
     agg["rank"] = range(1, len(agg) + 1)
-    agg["skill_score"] = 1.0 / (1.0 + agg["mean_rmse"]) if lower_is_better else agg["mean_correlation"]
 
     return agg.round(4).to_dict(orient="records")
 

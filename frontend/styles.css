@@ -113,6 +113,7 @@ main { padding: 1rem; overflow-y: auto; }
 .rank-card .rank-num { font-size: 2rem; font-weight: bold; color: var(--accent); }
 .rank-card .model-name { font-size: 1.1rem; margin: 0.25rem 0; }
 .rank-card .metric { color: var(--muted); font-size: 0.85rem; }
+.rank-card .metric.muted { font-size: 0.78rem; font-style: italic; opacity: 0.85; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; }
 .kpi { background: var(--panel); padding: 0.75rem; border-radius: 8px; border: 1px solid var(--border); }
