@@ -1,9 +1,9 @@
 /**
- * PM2 ecosystem — MONAS @ psimkg.bmkg.go.id/monas
+ * PM2 ecosystem — MONAS @ psimkg.bmkg.go.id/monas (webpsi)
  *
+ * Mode produksi: SERVE_READONLY — hanya baca artifact dari PC/HPC.
  * Deploy path: /var/www/monas
  * Start:  pm2 startOrReload ecosystem.config.cjs
- * Logs:   pm2 logs monas-api
  */
 module.exports = {
   apps: [
@@ -15,7 +15,7 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
-      max_memory_restart: "4G",
+      max_memory_restart: "1G",
       error_file: "logs/api-error.log",
       out_file: "logs/api-out.log",
       merge_logs: true,
@@ -28,8 +28,12 @@ module.exports = {
         BASE_PATH: "/monas",
         CORS_ORIGIN: "https://psimkg.bmkg.go.id",
         SEED_DEMO_DATA: "false",
-        FORCE_PIPELINE: "true",
-        AUTO_SYNC_OBS: "true",
+        // Serve-only: hitungan di PC/HPC, sync artifact harian
+        SERVE_READONLY: "true",
+        ENABLE_PIPELINE_SCHEDULER: "false",
+        FORCE_PIPELINE: "false",
+        AUTO_SYNC_OBS: "false",
+        DISABLE_STARTUP_PIPELINE: "true",
         DATA_DIR: "./data",
       },
     },

@@ -13,6 +13,9 @@ from backend.config import (
     LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
     MODEL_LOCAL_PATHS,
+    PARALLEL_BACKEND,
+    PARALLEL_VERIFY,
+    PARALLEL_WORKERS,
     USE_DUMMY_MODELS,
 )
 from backend.services.nc_ingest import ingest_nc_from_path
@@ -22,7 +25,9 @@ from backend.services.sftp_client import list_remote_nc_files, resolve_model_nc_
 
 
 def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=120)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=60000")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -345,8 +350,20 @@ def process_model_run(
         raise
 
 
-def run_full_pipeline(progress_cb: Callable[[float, str], None] | None = None) -> dict[str, Any]:
-    """Discover → register → process all pending runs."""
+def _process_run_worker(model: str, init_time: str, nc_path: str) -> dict[str, Any]:
+    """Top-level worker for ProcessPoolExecutor (picklable)."""
+    try:
+        result = process_model_run(model, init_time, nc_path)
+        return {"ok": True, "model": model, "init_time": init_time, "result": result}
+    except Exception as e:
+        return {"ok": False, "model": model, "init_time": init_time, "error": str(e)}
+
+
+def run_full_pipeline(
+    progress_cb: Callable[[float, str], None] | None = None,
+    parallel: bool | None = None,
+) -> dict[str, Any]:
+    """Discover → register → process pending runs (opsional paralel per model)."""
     def report(p: float, msg: str) -> None:
         if progress_cb:
             progress_cb(p, msg)
@@ -357,24 +374,62 @@ def run_full_pipeline(progress_cb: Callable[[float, str], None] | None = None) -
 
     pending = get_pending_runs()
     processed = 0
-    errors = []
+    errors: list[dict[str, Any]] = []
 
     if pending.empty:
         report(100, "Tidak ada run baru — menampilkan hasil terakhir")
         return {"discovered": len(runs), "processed": 0, "message": "Up to date", "inventory": runs}
 
-    total = len(pending)
-    for i, row in pending.iterrows():
-        pct = 10 + (i / total) * 85
-        report(pct, f"Verifikasi {row['model']} init {row['init_time']}...")
-        try:
-            process_model_run(row["model"], row["init_time"], row["nc_path"], progress_cb=report)
-            processed += 1
-        except Exception as e:
-            errors.append({"model": row["model"], "init_time": row["init_time"], "error": str(e)})
+    use_parallel = PARALLEL_VERIFY if parallel is None else parallel
+    jobs = [
+        (row["model"], row["init_time"], row["nc_path"])
+        for _, row in pending.iterrows()
+    ]
+    total = len(jobs)
 
-    report(100, f"Selesai — {processed} run diproses")
-    return {"discovered": len(runs), "processed": processed, "errors": errors, "inventory": runs}
+    if use_parallel and total > 1:
+        report(10, f"Verifikasi paralel {total} run (workers={PARALLEL_WORKERS}, backend={PARALLEL_BACKEND})...")
+        from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+        Executor = ThreadPoolExecutor if PARALLEL_BACKEND == "thread" else ProcessPoolExecutor
+        done = 0
+        with Executor(max_workers=min(PARALLEL_WORKERS, total)) as ex:
+            futs = {
+                ex.submit(_process_run_worker, m, it, p): (m, it)
+                for m, it, p in jobs
+            }
+            for fut in as_completed(futs):
+                out = fut.result()
+                done += 1
+                pct = 10 + (done / total) * 85
+                if out.get("ok"):
+                    processed += 1
+                    report(pct, f"OK {out['model']} {out['init_time']} ({done}/{total})")
+                else:
+                    errors.append({
+                        "model": out["model"],
+                        "init_time": out["init_time"],
+                        "error": out.get("error", "unknown"),
+                    })
+                    report(pct, f"ERR {out['model']}: {out.get('error')}")
+    else:
+        for i, (model, init_time, nc_path) in enumerate(jobs):
+            pct = 10 + (i / total) * 85
+            report(pct, f"Verifikasi {model} init {init_time}...")
+            try:
+                process_model_run(model, init_time, nc_path, progress_cb=report)
+                processed += 1
+            except Exception as e:
+                errors.append({"model": model, "init_time": init_time, "error": str(e)})
+
+    report(100, f"Selesai — {processed} run diproses ({'paralel' if use_parallel and total > 1 else 'serial'})")
+    return {
+        "discovered": len(runs),
+        "processed": processed,
+        "errors": errors,
+        "inventory": runs,
+        "parallel": use_parallel and total > 1,
+    }
 
 
 def get_pipeline_status() -> dict[str, Any]:

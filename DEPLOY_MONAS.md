@@ -96,21 +96,24 @@ pm2 logs monas-web
 
 ## Data & NC
 
+- **Flow harian PC → webpsi (disarankan sementara):** lihat `docs/DAILY_PC_WEBPSI_FLOW.md`
+  - PC hitung jam 03:00 → export artifact ringan → sync ke `/var/www/monas/data/artifacts/`
+  - webpsi: `SERVE_READONLY=true` (PM2 ecosystem sudah set)
 - Data SQLite/cache: `/var/www/monas/data/`
-- Sync NC dari litbangweb (cron 6 jam):
+- Sync NC penuh dari litbangweb (opsional, berat):
   ```bash
   scripts/sync_nc_from_litbangweb.sh
   ```
-- Fetch observasi (cron 4 jam):
+- Import artifact setelah sync dari PC:
   ```bash
-  scripts/fetch_obs_cron.sh
+  scripts/sync_artifacts_to_webpsi.sh
   ```
 
 ---
 
 ## Stack
 
-**Python FastAPI + static HTML/JS** — tidak ada build step.
+**Python FastAPI + static HTML/JS** — tidak ada build step. **Tidak diganti React** — latency diatasi dengan precompute + artifact ringan, bukan rewrite frontend.
 
 Frontend production: `server-static.js` (Node)  
 Backend production: `uvicorn backend.main:app` via Python venv
