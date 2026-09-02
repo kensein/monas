@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NWP Verification Dashboard — BMKG Litbang</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 </head>
 <body>
   <header>
     <h1>🌐 NWP Verification Dashboard</h1>
-    <p>HARP Point Verification · InaNWP · InaCAWO · GFS · IFS · Auto-sync litbangweb</p>
+    <p>HARP Point Verification · InaNWP (real) · InaCAWO/GFS/IFS (dummy) · BMKG Sinoptik</p>
   </header>
 
   <div class="layout">
@@ -43,10 +43,10 @@
 
       <section>
         <h3>Model</h3>
-        <label><input type="checkbox" class="model-cb" value="InaNWP" checked /> InaNWP</label>
-        <label><input type="checkbox" class="model-cb" value="InaCAWO" checked /> InaCAWO</label>
-        <label><input type="checkbox" class="model-cb" value="GFS" checked /> GFS</label>
-        <label><input type="checkbox" class="model-cb" value="IFS" checked /> IFS</label>
+        <label><input type="checkbox" class="model-cb" value="InaNWP" checked /> InaNWP <span class="badge real">real</span></label>
+        <label><input type="checkbox" class="model-cb" value="InaCAWO" checked /> InaCAWO <span class="badge dummy">dummy</span></label>
+        <label><input type="checkbox" class="model-cb" value="GFS" checked /> GFS <span class="badge dummy">dummy</span></label>
+        <label><input type="checkbox" class="model-cb" value="IFS" checked /> IFS <span class="badge dummy">dummy</span></label>
       </section>
     </aside>
 
@@ -55,6 +55,7 @@
         <button class="tab active" data-tab="overview">Overview & Ranking</button>
         <button class="tab" data-tab="scores">Scores vs Lead Time (D+0 → D+7)</button>
         <button class="tab" data-tab="map">Peta Stasiun</button>
+        <button class="tab" data-tab="method">Metode HARP</button>
         <button class="tab" data-tab="station">Detail Stasiun</button>
       </div>
 
@@ -76,6 +77,10 @@
         </div>
       </div>
 
+      <div id="method" class="panel">
+        <div id="harpMethodology" class="method-doc">Memuat metode HARP...</div>
+      </div>
+
       <div id="station" class="panel">
         <select id="stationSelect"></select>
         <div id="stationChart" class="chart"></div>
@@ -84,6 +89,6 @@
     </main>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

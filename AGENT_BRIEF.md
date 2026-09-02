@@ -34,7 +34,7 @@ Data model diverifikasi terhadap **observasi stasiun sinoptik BMKG** (format tit
 | litbangweb deploy | Awalnya direncanakan, **dibatalkan** — litbangweb **tidak punya akses internet** |
 | Cloud Agent | Tidak bisa akses `C:\Users\husei\...` — hanya VM Linux remote |
 | Opsi B (dipilih) | Develop & run di **PC BMKG lokal** + Cursor **Local Agent** |
-| Deploy produksi | Nanti di server **webpsi** (sama ekosistem psiidn) |
+| Deploy produksi | Server **PSIMKG** → `https://psimkg.bmkg.go.id/monas/` |
 
 ---
 
@@ -251,34 +251,17 @@ SFTP_PASSWORD=<isi di .env>
 
 ---
 
-## 11. Rencana Deploy webpsi (TODO)
+## 11. Deploy PSIMKG (portal sub-app MONAS)
 
-Pola mengikuti **psiidn** (litbangweb → webpsi via SFTP):
+| Item | Nilai |
+|------|-------|
+| Deploy path | `/var/www/monas` |
+| URL publik | https://psimkg.bmkg.go.id/monas/ |
+| Apache snippet | `deploy/apache-monas.conf` |
+| PM2 | `ecosystem.config.cjs` (`monas-api`, `monas-web`) |
+| Panduan | `DEPLOY_MONAS.md`, `SETUP_LOCAL.md` |
 
-```
-litbangweb                          webpsi
-├── wrf/wrfout/*.nc  ──SFTP/rsync──►  /var/www/.../nwp-verify/data/nc/
-├── (hasil verifikasi?)              ├── backend + frontend
-└── psiidn_export (referensi)        └── nginx reverse proxy :443
-```
-
-### Task untuk Local Agent / fase deploy webpsi
-
-- [ ] Tentukan path deploy di webpsi (koordinasi dengan admin webpsi)
-- [ ] Script `deploy_webpsi.sh` — rsync/SFTP dari litbangweb + systemd service
-- [ ] Nginx config: proxy `/api` → :8013, static frontend → :3013 atau serve static
-- [ ] Cron di litbangweb atau webpsi: pull NC baru dari wrfout tiap cycle model
-- [ ] Cron fetch observasi BMKG (POST API) — webpsi punya internet/intranet?
-- [ ] Mapping path model GFS/IFS/InaCAWO jika naming file berbeda dari InaNWP
-- [ ] Hapus/demo data seed di produksi (`generate_demo_data` hanya dev)
-- [ ] Auth/login dashboard jika diperlukan di webpsi publik
-- [ ] Optimasi NC 12GB: lazy read xarray chunks, jangan duplicate file
-
-### Referensi psiidn (litbangweb)
-- Export script: `/opt/lampp/htdocs/wrf/psiidn_export/`
-- Input NC: `/opt/lampp/htdocs/wrf/wrfout`
-- Output zip: `/opt/lampp/htdocs/wrf/psiidn_products/`
-- README psiidn menyebut rsync ke webpsi untuk climate data — gunakan pola yang sama
+Dev lokal dulu di PC BMKG → `git push` → `git pull` di server → `./deploy_monas.sh`
 
 ---
 
@@ -294,12 +277,12 @@ litbangweb                          webpsi
 - SQLite cache obs + verification scores
 
 ### ⏳ Belum / Perlu Local Agent
-- Test end-to-end dengan NC 12GB asli di PC lokal
-- Test BMKG API dari intranet BMKG (login psimkg)
-- Deploy script & nginx untuk **webpsi**
-- Sync otomatis NC litbangweb → webpsi
-- Model InaCAWO, GFS, IFS — pastikan file NC & naming ada di wrfout
-- Production hardening (no demo seed, logging, auth)
+- [ ] Test end-to-end dengan NC 12GB asli di PC lokal (`scripts/test_nc_pipeline.py --full`)
+- [ ] Test BMKG API dari intranet BMKG (login psimkg)
+- [x] Deploy script Apache + PM2 untuk **webpsi**
+- [x] Sync otomatis NC litbangweb → webpsi (script + cron)
+- [ ] Model InaCAWO, GFS, IFS — pastikan file NC & naming ada di wrfout
+- [ ] Production hardening (logging, auth)
 
 ---
 

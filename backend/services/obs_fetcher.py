@@ -1,9 +1,10 @@
 """BMKG Sinoptik API client + SFTP cache."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ import pandas as pd
 
 from backend.config import (
     DB_PATH,
+    MAX_LEAD_TIME_HOURS,
     OBS_DIR,
     SFTP_HOST,
     SFTP_OBS_PATH,
@@ -83,11 +85,54 @@ async def fetch_and_save_sinoptik(
     return {"fetched": len(records), "records_saved": saved}
 
 
+def sync_observations_for_init(
+    init_time: str | datetime,
+    buffer_hours_before: int = 6,
+    buffer_hours_after: int | None = None,
+) -> dict[str, Any]:
+    """
+    Fetch BMKG Sinoptik obs covering D+0–D+7 for a model init cycle.
+    Blocking wrapper — call from pipeline before verification.
+    """
+    if isinstance(init_time, str):
+        init_dt = datetime.fromisoformat(init_time.replace("Z", ""))
+    else:
+        init_dt = init_time
+
+    after = buffer_hours_after if buffer_hours_after is not None else MAX_LEAD_TIME_HOURS + 6
+    date_from = (init_dt - timedelta(hours=buffer_hours_before)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    date_to = (init_dt + timedelta(hours=after)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        return asyncio.run(fetch_and_save_sinoptik(date_from, date_to))
+    except Exception as e:
+        return {"fetched": 0, "records_saved": 0, "error": str(e)}
+
+
+def sync_observations_recent(days: int = 10) -> dict[str, Any]:
+    """Fetch recent observations (scheduler / cron helper)."""
+    end = datetime.utcnow()
+    start = end - timedelta(days=days)
+    date_from = start.strftime("%Y-%m-%dT%H:%M:%SZ")
+    date_to = end.strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        return asyncio.run(fetch_and_save_sinoptik(date_from, date_to))
+    except Exception as e:
+        return {"fetched": 0, "records_saved": 0, "error": str(e)}
+
+
 def upsert_stations_from_records(records: list[dict[str, Any]]) -> None:
+    from backend.services.obs_format import flatten_sinoptik_records, _station_id_from_row
+
     conn = get_db()
     seen = set()
-    for rec in records:
-        sid = str(rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id") or "")
+    flat = flatten_sinoptik_records(records) if records and not isinstance(records[0], dict) else records
+    for rec in flat:
+        if not isinstance(rec, dict):
+            continue
+        sid = _station_id_from_row(rec) or str(
+            rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id") or ""
+        )
         if not sid or sid in seen:
             continue
         seen.add(sid)
@@ -102,7 +147,11 @@ def upsert_stations_from_records(records: list[dict[str, Any]]) -> None:
     conn.close()
 
 
-def normalize_obs_records(records: list[dict[str, Any]]) -> pd.DataFrame:
+from backend.services.obs_format import flatten_sinoptik_records
+
+
+def normalize_obs_records(records: list[Any]) -> pd.DataFrame:
+    records = flatten_sinoptik_records(records)
     rows = []
     numeric_params = [p for p in SINOPTIK_PARAMETERS if not p.endswith("_flag") and p not in (
         "station_name", "data_timestamp", "encoded_synop", "edited_encoded_synop",
@@ -110,11 +159,19 @@ def normalize_obs_records(records: list[dict[str, Any]]) -> pd.DataFrame:
     )]
 
     for rec in records:
+        if not isinstance(rec, dict):
+            continue
         station_id = str(
             rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id")
-            or rec.get("stationWmoId") or ""
+            or rec.get("stationWmoId") or rec.get("wmo") or ""
         )
-        valid_time = rec.get("data_timestamp") or rec.get("valid_time")
+        if not station_id and rec.get("station_name"):
+            from backend.services.obs_format import _station_id_from_row
+            station_id = _station_id_from_row(rec)
+        valid_time = (
+            rec.get("data_timestamp") or rec.get("valid_time") or rec.get("timestamp")
+            or rec.get("observation_time") or rec.get("time")
+        )
         if not station_id or not valid_time:
             continue
 

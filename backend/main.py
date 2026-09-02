@@ -10,8 +10,12 @@ from pydantic import BaseModel, Field
 
 from backend.config import (
     API_PORT,
+    BASE_PATH,
+    CORS_ORIGIN,
+    LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
     MODELS,
+    SEED_DEMO_DATA,
     VERIFY_PARAMETERS,
 )
 from backend.services.bmkg_auth import login, token_status
@@ -34,10 +38,17 @@ from backend.services.scheduler import start_scheduler
 from backend.services.sftp_client import get_server_model_inventory
 from backend.services.verification import compute_ranking
 
-app = FastAPI(title="NWP Verification API", version="2.0.0")
+app = FastAPI(
+    title="NWP Verification API",
+    version="2.0.0",
+    root_path=BASE_PATH if BASE_PATH else "",
+)
+_cors_origins = [CORS_ORIGIN, "http://localhost:3013", "http://127.0.0.1:3013"]
+if BASE_PATH:
+    _cors_origins.append(f"{CORS_ORIGIN}{BASE_PATH}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(dict.fromkeys(_cors_origins)),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -56,14 +67,14 @@ async def startup() -> None:
     init_db()
     init_pipeline_db()
     from backend.services.pipeline import load_verification_scores
-    if load_verification_scores().empty:
+    if SEED_DEMO_DATA and load_verification_scores().empty:
         generate_demo_data()
     start_scheduler()
     # Local mode: scan Windows/local NC folders when FORCE_PIPELINE or local path exists
     force = os.getenv("FORCE_PIPELINE", "").lower() == "true"
     local_paths = [
         os.getenv("INANWP_NC_PATH", ""),
-        os.getenv("LOCAL_NC_PATH", ""),
+        LOCAL_NC_PATH,
     ]
     has_local = any(p and __import__("pathlib").Path(p).exists() for p in local_paths)
     if force or has_local:
@@ -71,9 +82,16 @@ async def startup() -> None:
         run_in_background(job.id, run_full_pipeline)
 
 
+@app.post("/api/obs/sync-recent")
+async def sync_recent_obs(days: int = Query(10, ge=1, le=30)) -> dict[str, Any]:
+    """Fetch recent Sinoptik observations (cron / manual trigger)."""
+    from backend.services.obs_fetcher import sync_observations_recent
+    return sync_observations_recent(days=days)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "auto-sync-litbangweb"}
+    return {"status": "ok", "mode": "nwp-verification"}
 
 
 @app.get("/api/pipeline/status")
@@ -131,6 +149,23 @@ async def fetch_bmkg_obs(body: ObsFetchRequest) -> dict[str, Any]:
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/harp/methodology")
+def harp_methodology() -> dict[str, Any]:
+    from backend.services.harp_methodology import get_methodology
+    return get_methodology()
+
+
+@app.get("/api/models/sources")
+def model_sources() -> dict[str, Any]:
+    from backend.services.dummy_models import get_model_data_sources
+    from backend.config import DUMMY_MODELS, USE_DUMMY_MODELS
+    return {
+        "sources": get_model_data_sources(),
+        "dummy_models": DUMMY_MODELS,
+        "use_dummy_models": USE_DUMMY_MODELS,
+    }
 
 
 @app.get("/api/parameters")

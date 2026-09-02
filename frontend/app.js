@@ -1,10 +1,25 @@
-const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:8013'
-  : `http://${window.location.hostname}:8013`;
+const BASE_PATH = (() => {
+  const p = window.location.pathname;
+  if (p.startsWith('/monas')) return '/monas';
+  return '';
+})();
+
+const API = (() => {
+  const { hostname, port } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8013';
+  }
+  // Portal PSIMKG: same-origin via Apache subpath
+  if (BASE_PATH) {
+    return `${window.location.origin}${BASE_PATH}/api`;
+  }
+  return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
+})();
 
 let map, markers = [];
 let paramsMeta = {};
 let maxLeadTime = 168;
+let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy' };
 
 async function api(path, opts = {}) {
   const res = await fetch(`${API}${path}`, opts);
@@ -42,12 +57,65 @@ async function init() {
 
   await loadCycles();
   await loadPipelineStatus();
+  await loadModelSources();
   initMap();
   bindEvents();
   await refreshAll();
 
   // Auto-refresh status setiap 5 menit
   setInterval(loadPipelineStatus, 300000);
+}
+
+async function loadModelSources() {
+  try {
+    const data = await api('/api/models/sources');
+    modelSources = data.sources || modelSources;
+    document.querySelectorAll('.model-cb').forEach(cb => {
+      const badge = cb.parentElement.querySelector('.badge');
+      if (!badge) return;
+      const src = modelSources[cb.value] || 'real';
+      badge.textContent = src;
+      badge.className = `badge ${src}`;
+    });
+  } catch (e) { console.warn('model sources', e); }
+}
+
+function modelBadge(model) {
+  const src = modelSources[model] || 'real';
+  return `<span class="badge ${src}">${src}</span>`;
+}
+
+async function loadMethodology() {
+  const el = document.getElementById('harpMethodology');
+  try {
+    const m = await api('/api/harp/methodology');
+    el.innerHTML = `
+      <h2>${m.title}</h2>
+      <p>${m.subtitle}</p>
+      <h3>Referensi HARP</h3>
+      <div class="refs">${m.references.map(r =>
+        `<a href="${r.url}" target="_blank" rel="noopener">${r.title}</a> — ${r.description}`
+      ).join('')}</div>
+      <h3>Alur kerja (harpPoint)</h3>
+      <ol>${m.workflow.map(w => `<li><strong>${w.name}</strong> — ${w.detail}</li>`).join('')}</ol>
+      <h3>Skor deterministik (det_verify)</h3>
+      <table><tr><th>Skor</th><th>Formula</th><th>Catatan</th></tr>
+      ${m.scores.map(s => `<tr><td>${s.id}</td><td><code>${s.formula}</code></td><td>${s.note}</td></tr>`).join('')}
+      </table>
+      <h3>Quality Control</h3>
+      <p>${m.qc}</p>
+      <h3>Implementasi MONAS</h3>
+      <ul>
+        <li>Interpolasi: ${m.implementation.interpolation}</li>
+        <li>Verifikasi: ${m.implementation.verification}</li>
+        <li>Lead time: ${m.implementation.lead_time}</li>
+      </ul>
+      <h3>Sumber data model</h3>
+      <ul>${Object.entries(m.data_sources).map(([k,v]) => `<li><strong>${k}</strong>: ${v}</li>`).join('')}</ul>
+    `;
+  } catch (e) {
+    el.textContent = 'Gagal memuat metode HARP: ' + e.message;
+  }
 }
 
 async function loadCycles() {
@@ -110,6 +178,7 @@ async function refreshAll() {
   if (tab === 'overview') await loadOverview();
   if (tab === 'scores') await loadScores();
   if (tab === 'map') await loadMap();
+  if (tab === 'method') await loadMethodology();
   if (tab === 'station') await loadStationDetail();
 }
 
@@ -126,7 +195,7 @@ async function loadOverview() {
   document.getElementById('rankingCards').innerHTML = ranking.ranking.map(r => `
     <div class="rank-card rank-${r.rank}">
       <div class="rank-num">#${r.rank}</div>
-      <div class="model-name">${r.model}</div>
+      <div class="model-name">${r.model} ${modelBadge(r.model)}</div>
       <div class="metric">Mean RMSE: <strong>${r.mean_rmse?.toFixed(3)}</strong></div>
       <div class="metric">MAE: ${r.mean_mae?.toFixed(3)} · r: ${r.mean_correlation?.toFixed(3)}</div>
       <div class="metric">Skill: ${r.skill_score?.toFixed(4)}</div>

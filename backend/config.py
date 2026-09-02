@@ -14,11 +14,33 @@ OBS_DIR = DATA_DIR / "obs"
 CACHE_DIR = DATA_DIR / "cache"
 DB_PATH = DATA_DIR / "nwp_verify.db"
 
-for d in (NC_DIR, OBS_DIR, CACHE_DIR):
+# Folder export observasi di PC lokal (download BMKG API → SCP ke litbangweb)
+OBS_EXPORT_DIR = os.getenv(
+    "OBS_EXPORT_DIR",
+    str(Path("D:/nwp-data/obs") if os.name == "nt" else DATA_DIR / "obs_export"),
+)
+
+for d in (NC_DIR, OBS_DIR, CACHE_DIR, Path(OBS_EXPORT_DIR)):
     d.mkdir(parents=True, exist_ok=True)
 
 API_PORT = int(os.getenv("API_PORT", "8013"))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "3013"))
+API_HOST = os.getenv("API_HOST", os.getenv("HOST", "127.0.0.1"))
+FRONTEND_HOST = os.getenv("FRONTEND_HOST", os.getenv("HOSTNAME", "127.0.0.1"))
+
+# Subpath deploy di portal PSIMKG: https://psimkg.bmkg.go.id/monas/
+BASE_PATH = os.getenv("BASE_PATH", "").rstrip("/")  # kosong = dev lokal (root)
+CORS_ORIGIN = os.getenv("CORS_ORIGIN", "https://psimkg.bmkg.go.id")
+DEPLOY_PATH = os.getenv("DEPLOY_PATH", "/var/www/monas")
+
+# Production vs dev: set SEED_DEMO_DATA=false on webpsi / local with real NC
+SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "true").lower() in ("1", "true", "yes")
+
+# Single NC file override (Opsi B: C:\Users\...\2026070112-d01-asim.nc)
+LOCAL_NC_PATH = os.getenv("LOCAL_NC_PATH", "").strip().strip('"').strip("'")
+
+# Large-file threshold for chunked xarray reads (bytes)
+NC_CHUNK_THRESHOLD_BYTES = int(os.getenv("NC_CHUNK_THRESHOLD_BYTES", str(500_000_000)))
 
 # BMKG Sinoptik API (v21)
 BMKG_API_BASE = os.getenv("BMKG_API_BASE", "https://bmkgsatu.bmkg.go.id")
@@ -30,7 +52,11 @@ SFTP_HOST = os.getenv("SFTP_HOST", "202.90.199.54")
 SFTP_PORT = int(os.getenv("SFTP_PORT", "3346"))
 SFTP_USER = os.getenv("SFTP_USER", "litbangweb")
 SFTP_PASSWORD = os.getenv("SFTP_PASSWORD", "_Pusl1tb4ng.123_")
-SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/monas")
+SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/wrf/monas_obs")
+
+# litbangweb: baca obs dari folder JSON (tanpa BMKG API — server tanpa internet)
+LITBANGWEB_OBS_DIR = os.getenv("LITBANGWEB_OBS_DIR", SFTP_OBS_PATH)
+OFFLINE_OBS_MODE = os.getenv("OFFLINE_OBS_MODE", "false").lower() in ("1", "true", "yes")
 
 # Model NC paths on litbangweb server (auto-sync, NO user upload)
 # Dashboard reads directly from these paths when deployed on litbangweb
@@ -61,6 +87,11 @@ LEAD_TIME_STEP = int(os.getenv("LEAD_TIME_STEP", "3"))
 PIPELINE_INTERVAL_SEC = int(os.getenv("PIPELINE_INTERVAL_SEC", "3600"))
 
 MODELS = ["InaNWP", "InaCAWO", "GFS", "IFS"]
+
+# Model tanpa NC → forecast dummy derived dari InaNWP
+DUMMY_MODELS = [m.strip() for m in os.getenv("DUMMY_MODELS", "InaCAWO,GFS,IFS").split(",") if m.strip()]
+USE_DUMMY_MODELS = os.getenv("USE_DUMMY_MODELS", "true").lower() in ("1", "true", "yes")
+REAL_MODELS = [m for m in MODELS if m not in DUMMY_MODELS]
 
 # All Sinoptik parameters from API Export Sinoptik (slide 8)
 SINOPTIK_PARAMETERS = [

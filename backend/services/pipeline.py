@@ -10,12 +10,15 @@ import pandas as pd
 
 from backend.config import (
     DB_PATH,
+    LOCAL_NC_PATH,
+    MAX_LEAD_TIME_HOURS,
     MODEL_LOCAL_PATHS,
+    USE_DUMMY_MODELS,
     VERIFY_PARAMETERS,
 )
 from backend.services.nc_ingest import ingest_nc_from_path
 from backend.services.nc_reader import parse_init_time
-from backend.services.obs_fetcher import get_stations, load_observations
+from backend.services.obs_fetcher import get_stations, load_observations, sync_observations_for_init
 from backend.services.sftp_client import list_remote_nc_files, resolve_model_nc_path
 from backend.services.verification import build_verification_pairs, det_verify
 
@@ -56,18 +59,65 @@ def init_pipeline_db() -> None:
             status TEXT, message TEXT, details TEXT
         );
     """)
+    try:
+        conn.execute("ALTER TABLE model_runs ADD COLUMN data_source TEXT DEFAULT 'real'")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
 
+def _infer_model_from_filename(filename: str) -> str:
+    name = filename.lower()
+    if "-cawo" in name:
+        return "InaCAWO"
+    if "-gfs" in name:
+        return "GFS"
+    if "-ifs" in name:
+        return "IFS"
+    return "InaNWP"
+
+
+def _discover_local_nc_file(path_str: str) -> list[dict[str, Any]]:
+    """Register a single LOCAL_NC_PATH file (Opsi B dev)."""
+    p = Path(path_str.strip().strip('"').strip("'"))
+    if not p.is_file() or p.suffix.lower() != ".nc":
+        return []
+    init = parse_init_time(p.name)
+    if not init:
+        return []
+    model = _infer_model_from_filename(p.name)
+    return [{
+        "model": model,
+        "init_time": init.isoformat(),
+        "nc_filename": p.name,
+        "nc_path": str(p.resolve()),
+        "file_size": p.stat().st_size,
+        "accessible": True,
+        "source": "local_nc_path",
+    }]
+
+
 def discover_model_runs() -> list[dict[str, Any]]:
-    """Scan configured paths (local server or SFTP) for NC files."""
-    runs = []
+    """Scan configured paths (local server, LOCAL_NC_PATH, or SFTP) for NC files."""
+    runs: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    if LOCAL_NC_PATH:
+        for r in _discover_local_nc_file(LOCAL_NC_PATH):
+            key = (r["model"], r["init_time"])
+            if key not in seen:
+                runs.append(r)
+                seen.add(key)
+
     for model, cfg in MODEL_LOCAL_PATHS.items():
         files = list_remote_nc_files(cfg["path"], pattern=cfg.get("pattern", "*.nc"))
         for f in files:
             init = parse_init_time(f["filename"])
             if not init:
+                continue
+            key = (model, init.isoformat())
+            if key in seen:
                 continue
             runs.append({
                 "model": model,
@@ -76,7 +126,10 @@ def discover_model_runs() -> list[dict[str, Any]]:
                 "nc_path": f["path"],
                 "file_size": f.get("size", 0),
                 "accessible": f.get("accessible", False),
+                "source": f.get("source", "scan"),
             })
+            seen.add(key)
+
     return sorted(runs, key=lambda x: x["init_time"], reverse=True)
 
 
@@ -129,6 +182,8 @@ def save_verification_scores(scores: list[dict]) -> int:
     conn = get_db()
     ts = datetime.utcnow().isoformat()
     for s in scores:
+        if s.get("lead_time", 0) > MAX_LEAD_TIME_HOURS:
+            continue
         conn.execute(
             """INSERT OR REPLACE INTO verification_scores
                (model, parameter, init_time, lead_time, bias, rmse, mae, stde,
@@ -151,8 +206,8 @@ def load_verification_scores(
 ) -> pd.DataFrame:
     init_pipeline_db()
     conn = get_db()
-    q = "SELECT * FROM verification_scores WHERE 1=1"
-    params: list[Any] = []
+    q = "SELECT * FROM verification_scores WHERE lead_time <= ?"
+    params: list[Any] = [MAX_LEAD_TIME_HOURS]
     if models:
         q += f" AND model IN ({','.join('?' * len(models))})"
         params.extend(models)
@@ -169,6 +224,50 @@ def load_verification_scores(
     df = pd.read_sql_query(q, conn, params=params)
     conn.close()
     return df
+
+
+def _ensure_observations(init_time: str, progress_cb: Callable[[float, str], None] | None) -> dict[str, Any]:
+    """Fetch/import observasi untuk init cycle. litbangweb: dari JSON lokal; PC/webpsi: BMKG API."""
+    from backend.config import LITBANGWEB_OBS_DIR, OFFLINE_OBS_MODE
+    from backend.services.obs_sync import import_obs_from_json_dir
+
+    obs_df = load_observations()
+    init_dt = datetime.fromisoformat(init_time.replace("Z", ""))
+    window_start = (init_dt - timedelta(hours=6)).isoformat()
+    window_end = (init_dt + timedelta(hours=MAX_LEAD_TIME_HOURS + 6)).isoformat()
+
+    has_window = False
+    if not obs_df.empty:
+        in_window = obs_df[
+            (obs_df["valid_time"] >= window_start) & (obs_df["valid_time"] <= window_end)
+        ]
+        has_window = len(in_window) > 100
+
+    if has_window:
+        return {"skipped": True, "records_saved": len(obs_df)}
+
+    # litbangweb offline: import JSON yang di-upload dari PC lokal
+    if OFFLINE_OBS_MODE or Path(LITBANGWEB_OBS_DIR).is_dir():
+        if progress_cb:
+            progress_cb(55, f"Import observasi JSON dari {LITBANGWEB_OBS_DIR}...")
+        imported = import_obs_from_json_dir(LITBANGWEB_OBS_DIR)
+        obs_df = load_observations()
+        if not obs_df.empty:
+            return {"source": "json_dir", **imported}
+        if OFFLINE_OBS_MODE:
+            raise ValueError(
+                f"OFFLINE_OBS_MODE: tidak ada observasi di {LITBANGWEB_OBS_DIR}. "
+                "Jalankan fetch_obs_local.py --sync di PC lokal."
+            )
+
+    if progress_cb:
+        progress_cb(55, f"Fetch observasi BMKG D+0–D+7 untuk init {init_time}...")
+    result = sync_observations_for_init(init_time)
+    if result.get("error"):
+        if not obs_df.empty:
+            return {"skipped": False, "warning": result["error"], "records_saved": len(obs_df)}
+        raise ValueError(f"Gagal fetch observasi BMKG: {result['error']}")
+    return result
 
 
 def process_model_run(
@@ -192,11 +291,12 @@ def process_model_run(
 
     try:
         local_path = resolve_model_nc_path(nc_path)
-        report(10, f"Membaca NC: {local_path.name}")
+        report(10, f"Membaca NC: {local_path.name} ({local_path.stat().st_size / 1e9:.2f} GB)")
 
         ingest_result = ingest_nc_from_path(local_path, model, copy_to_data_dir=False, progress_cb=report)
 
-        report(70, "Menghitung skor verifikasi HARP...")
+        obs_sync = _ensure_observations(init_time, progress_cb)
+        report(70, "Menghitung skor verifikasi HARP D+0–D+7...")
         obs_df = load_observations()
         if obs_df.empty:
             raise ValueError("Data observasi kosong — jalankan sync observasi terlebih dahulu")
@@ -211,6 +311,7 @@ def process_model_run(
             from backend.services.obs_fetcher import load_forecasts
             fcst_df = load_forecasts(models=[model], parameters=[param])
             fcst_df = fcst_df[fcst_df["init_time"] == init_time]
+            fcst_df = fcst_df[fcst_df["lead_time"] <= MAX_LEAD_TIME_HOURS]
 
             for lt in sorted(fcst_df["lead_time"].unique()):
                 lt_fcst = fcst_df[fcst_df["lead_time"] == lt]
@@ -225,14 +326,26 @@ def process_model_run(
 
         conn = get_db()
         conn.execute(
-            """UPDATE model_runs SET status='done', processed_at=?, error_message=NULL
+            """UPDATE model_runs SET status='done', processed_at=?, error_message=NULL, data_source='real'
                WHERE model=? AND init_time=?""",
             (datetime.utcnow().isoformat(), model, init_time),
         )
         conn.commit()
         conn.close()
 
-        return {"scores_saved": saved, "forecast_records": ingest_result.get("forecast_records", 0)}
+        result = {
+            "scores_saved": saved,
+            "forecast_records": ingest_result.get("forecast_records", 0),
+            "obs_sync": obs_sync,
+        }
+
+        if model == "InaNWP" and USE_DUMMY_MODELS:
+            from backend.services.dummy_models import verify_dummy_models
+            report(90, "Generate & verifikasi model dummy (InaCAWO, GFS, IFS)...")
+            dummy_result = verify_dummy_models(init_time, progress_cb=progress_cb)
+            result["dummy_models"] = dummy_result
+
+        return result
 
     except Exception as e:
         conn = get_db()
@@ -251,7 +364,7 @@ def run_full_pipeline(progress_cb: Callable[[float, str], None] | None = None) -
         if progress_cb:
             progress_cb(p, msg)
 
-    report(5, "Scanning model files di server litbangweb...")
+    report(5, "Scanning model NC files...")
     runs = discover_model_runs()
     register_runs(runs)
 
@@ -261,27 +374,28 @@ def run_full_pipeline(progress_cb: Callable[[float, str], None] | None = None) -
 
     if pending.empty:
         report(100, "Tidak ada run baru — menampilkan hasil terakhir")
-        return {"discovered": len(runs), "processed": 0, "message": "Up to date"}
+        return {"discovered": len(runs), "processed": 0, "message": "Up to date", "inventory": runs}
 
     total = len(pending)
     for i, row in pending.iterrows():
         pct = 10 + (i / total) * 85
         report(pct, f"Verifikasi {row['model']} init {row['init_time']}...")
         try:
-            process_model_run(row["model"], row["init_time"], row["nc_path"])
+            process_model_run(row["model"], row["init_time"], row["nc_path"], progress_cb=report)
             processed += 1
         except Exception as e:
             errors.append({"model": row["model"], "init_time": row["init_time"], "error": str(e)})
 
     report(100, f"Selesai — {processed} run diproses")
-    return {"discovered": len(runs), "processed": processed, "errors": errors}
+    return {"discovered": len(runs), "processed": processed, "errors": errors, "inventory": runs}
 
 
 def get_pipeline_status() -> dict[str, Any]:
     init_pipeline_db()
     conn = get_db()
     runs = conn.execute(
-        "SELECT model, init_time, status, processed_at, nc_filename FROM model_runs ORDER BY init_time DESC LIMIT 20"
+        "SELECT model, init_time, status, processed_at, nc_filename, file_size, error_message "
+        "FROM model_runs ORDER BY init_time DESC LIMIT 20"
     ).fetchall()
     last_log = conn.execute(
         "SELECT * FROM pipeline_log ORDER BY id DESC LIMIT 1"
@@ -293,4 +407,7 @@ def get_pipeline_status() -> dict[str, Any]:
         "verification_scores_count": score_count,
         "last_pipeline": dict(last_log) if last_log else None,
         "server_paths": {m: c["path"] for m, c in MODEL_LOCAL_PATHS.items()},
+        "local_nc_path": LOCAL_NC_PATH or None,
+        "max_lead_time_hours": MAX_LEAD_TIME_HOURS,
+        "model_sources": __import__("backend.services.dummy_models", fromlist=["get_model_data_sources"]).get_model_data_sources(),
     }

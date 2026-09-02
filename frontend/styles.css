@@ -110,6 +110,25 @@ main { padding: 1rem; overflow-y: auto; }
 
 #stationSelect { width: 100%; max-width: 400px; margin-bottom: 1rem; padding: 0.5rem; }
 
+.badge {
+  font-size: 0.65rem; padding: 0.1rem 0.35rem; border-radius: 4px;
+  vertical-align: middle; margin-left: 0.25rem; text-transform: uppercase;
+}
+.badge.real { background: rgba(74,222,128,0.2); color: var(--good); }
+.badge.dummy { background: rgba(251,191,36,0.2); color: var(--warn); }
+
+.method-doc { background: var(--panel); border: 1px solid #334155; border-radius: 10px; padding: 1.25rem; line-height: 1.6; }
+.method-doc h2 { margin-top: 0; color: var(--accent); }
+.method-doc h3 { color: #7dd3fc; margin: 1.25rem 0 0.5rem; font-size: 1rem; }
+.method-doc ol, .method-doc ul { padding-left: 1.25rem; }
+.method-doc li { margin: 0.35rem 0; }
+.method-doc a { color: var(--accent); }
+.method-doc code { background: #0f172a; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; }
+.method-doc .refs a { display: block; margin: 0.35rem 0; }
+.method-doc table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+.method-doc th, .method-doc td { border: 1px solid #334155; padding: 0.4rem 0.6rem; text-align: left; }
+.method-doc th { background: #0f172a; color: var(--accent); }
+
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   .map-wrap { grid-template-columns: 1fr; }

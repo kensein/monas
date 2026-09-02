@@ -51,13 +51,84 @@ async def fetch_sinoptik_chunk(
         raise BMKGAuthError(f"Export sinoptik gagal HTTP {resp.status_code}: {resp.text[:400]}")
 
     data = resp.json()
+    return _parse_sinoptik_response(data)
+
+
+def _parse_sinoptik_response(data: Any) -> list[dict[str, Any]]:
+    """Parse berbagai format response BMKG API."""
+    from backend.services.obs_format import flatten_sinoptik_records
+
     if isinstance(data, list):
-        return data
+        return flatten_sinoptik_records(data)
     if isinstance(data, dict):
-        for key in ("data", "results", "items", "records", "observations"):
-            if isinstance(data.get(key), list):
-                return data[key]
+        for key in ("data", "results", "items", "records", "observations", "rows"):
+            val = data.get(key)
+            if isinstance(val, list):
+                return flatten_sinoptik_records(val)
+        nested = data.get("data")
+        if isinstance(nested, dict):
+            for key in ("items", "records", "observations", "rows", "results"):
+                val = nested.get(key)
+                if isinstance(val, list):
+                    return flatten_sinoptik_records(val)
     return []
+
+
+async def diagnose_sinoptik_api(
+    date_from: str,
+    date_to: str,
+) -> dict[str, Any]:
+    """Test login + satu request export, return metadata diagnostik."""
+    from backend.services.bmkg_auth import login
+
+    token = await login(force=True)
+    body = {
+        "data_type": "sinoptik",
+        "parameter_names": ["*"],
+        "station_wmo_ids": ["*"],
+        "date_from": date_from,
+        "date_to": date_to,
+        "order_timestamp_code": 1,
+    }
+    url = f"{BMKG_API_BASE.rstrip('/')}/api/v21/export/observation/by-station/query"
+
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+        resp = await client.post(
+            url,
+            json=body,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        )
+
+    info: dict[str, Any] = {
+        "login_ok": bool(token),
+        "token_prefix": token[:12] + "..." if token else None,
+        "http_status": resp.status_code,
+        "url": url,
+        "request_body": body,
+    }
+
+    try:
+        data = resp.json()
+    except Exception:
+        info["parse_error"] = resp.text[:500]
+        return info
+
+    if isinstance(data, dict):
+        info["response_keys"] = list(data.keys())
+        for k, v in data.items():
+            if isinstance(v, list):
+                info[f"key_{k}_count"] = len(v)
+            elif isinstance(v, dict):
+                info[f"key_{k}_subkeys"] = list(v.keys())[:10]
+
+    records = _parse_sinoptik_response(data)
+    info["records_parsed"] = len(records)
+    if records:
+        info["sample_record_keys"] = list(records[0].keys())[:15]
+    elif isinstance(data, dict):
+        info["raw_preview"] = str(data)[:400]
+
+    return info
 
 
 def _parse_dt(s: str) -> datetime:
