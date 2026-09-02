@@ -10,8 +10,10 @@ from pydantic import BaseModel, Field
 
 from backend.config import (
     API_PORT,
+    LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
     MODELS,
+    SEED_DEMO_DATA,
     VERIFY_PARAMETERS,
 )
 from backend.services.bmkg_auth import login, token_status
@@ -56,14 +58,14 @@ async def startup() -> None:
     init_db()
     init_pipeline_db()
     from backend.services.pipeline import load_verification_scores
-    if load_verification_scores().empty:
+    if SEED_DEMO_DATA and load_verification_scores().empty:
         generate_demo_data()
     start_scheduler()
     # Local mode: scan Windows/local NC folders when FORCE_PIPELINE or local path exists
     force = os.getenv("FORCE_PIPELINE", "").lower() == "true"
     local_paths = [
         os.getenv("INANWP_NC_PATH", ""),
-        os.getenv("LOCAL_NC_PATH", ""),
+        LOCAL_NC_PATH,
     ]
     has_local = any(p and __import__("pathlib").Path(p).exists() for p in local_paths)
     if force or has_local:
@@ -71,9 +73,16 @@ async def startup() -> None:
         run_in_background(job.id, run_full_pipeline)
 
 
+@app.post("/api/obs/sync-recent")
+async def sync_recent_obs(days: int = Query(10, ge=1, le=30)) -> dict[str, Any]:
+    """Fetch recent Sinoptik observations (cron / manual trigger)."""
+    from backend.services.obs_fetcher import sync_observations_recent
+    return sync_observations_recent(days=days)
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "mode": "auto-sync-litbangweb"}
+    return {"status": "ok", "mode": "nwp-verification"}
 
 
 @app.get("/api/pipeline/status")

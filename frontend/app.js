@@ -1,6 +1,15 @@
-const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? 'http://localhost:8013'
-  : `http://${window.location.hostname}:8013`;
+const API = (() => {
+  const { hostname, pathname, port } = window.location;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:8013';
+  }
+  // webpsi Apache proxy: /nwp-verify → frontend, /nwp-verify/api → backend
+  if (pathname.startsWith('/nwp-verify')) {
+    return `${window.location.origin}/nwp-verify/api`;
+  }
+  // Direct port access (dev / litbangweb)
+  return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
+})();
 
 let map, markers = [];
 let paramsMeta = {};
