@@ -131,20 +131,6 @@ async function loadMethodology() {
       </table>
       <h3>Quality Control</h3>
       <p>${m.qc}</p>
-      <h3>Ranking model (det_summary)</h3>
-      <p>${m.ranking || ''}</p>
-      <h3>Skill score di HARP (bukan untuk ranking kontinu)</h3>
-      <table><tr><th>Konteks</th><th>Skor skill</th><th>Catatan</th></tr>
-      ${(m.skill_scores || []).map(s => `<tr><td>${s.context}</td><td><code>${s.scores}</code></td><td>${s.note}</td></tr>`).join('')}
-      </table>
-      <h3>Cache &amp; pipeline (pola PSIIDN)</h3>
-      <p>${m.cache || ''}</p>
-      <h3>Implementasi MONAS</h3>
-      <ul>
-        <li>Interpolasi: ${m.implementation.interpolation}</li>
-        <li>Verifikasi: ${m.implementation.verification}</li>
-        <li>Lead time: ${m.implementation.lead_time}</li>
-      </ul>
       <h3>Sumber data model</h3>
       <ul>${Object.entries(m.data_sources).map(([k, v]) => `<li><strong>${k}</strong>: ${v}</li>`).join('')}</ul>
     `;
@@ -328,8 +314,21 @@ async function loadMap() {
   });
 }
 
+function stationDetailQuery() {
+  const init = selectedInitTime();
+  const lt = document.getElementById('leadTime').value;
+  return `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
+}
+
+function downsampleSeries(series, maxPoints = 400) {
+  if (series.length <= maxPoints) return series;
+  const step = Math.ceil(series.length / maxPoints);
+  return series.filter((_, i) => i % step === 0);
+}
+
 async function showStationMapDetail(stationId, param, init) {
-  const q = `parameter=${param}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
+  const lt = document.getElementById('leadTime').value;
+  const q = `parameter=${param}&models=${modelsQuery()}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
   const data = await api(`/api/station/${stationId}/detail?${q}`);
   const paired = data.series.filter(s => s.obs != null && selectedModels().some(m => s[m] != null));
   const latest = paired.slice(-1)[0] || {};
@@ -343,25 +342,25 @@ async function showStationMapDetail(stationId, param, init) {
 
 async function loadStationDetail() {
   const stationId = document.getElementById('stationSelect').value;
-  const init = selectedInitTime();
-  const param = document.getElementById('parameter').value;
-  const q = `parameter=${param}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
-  const data = await api(`/api/station/${stationId}/detail?${q}`);
+  const data = await api(`/api/station/${stationId}/detail?${stationDetailQuery()}`);
+  const plotSeries = downsampleSeries(data.series);
+  const useGl = plotSeries.length > 150;
 
   const traces = [{
     name: 'Observasi',
-    x: data.series.map(s => s.valid_time),
-    y: data.series.map(s => s.obs),
+    x: plotSeries.map(s => s.valid_time),
+    y: plotSeries.map(s => s.obs),
     mode: 'lines+markers',
+    type: useGl ? 'scattergl' : 'scatter',
     line: { color: MODEL_COLORS.Observasi, width: 1, dash: 'dot' },
-    marker: { size: 6, color: MODEL_COLORS.Observasi },
+    marker: { size: 5, color: MODEL_COLORS.Observasi },
     connectgaps: false,
   }];
 
   selectedModels().forEach(m => {
     const xs = [];
     const ys = [];
-    data.series.forEach(s => {
+    plotSeries.forEach(s => {
       if (s[m] != null) { xs.push(s.valid_time); ys.push(s[m]); }
     });
     traces.push({
@@ -369,17 +368,20 @@ async function loadStationDetail() {
       x: xs,
       y: ys,
       mode: 'lines+markers',
+      type: useGl ? 'scattergl' : 'scatter',
       line: { color: MODEL_COLORS[m] || '#00529B', width: 2 },
-      marker: { size: 5 },
+      marker: { size: 4 },
       connectgaps: true,
     });
   });
 
+  const initNote = data.init_time ? ` · init ${String(data.init_time).slice(0, 16)}` : '';
+  const ltNote = data.lead_time != null ? ` · ${formatLeadTime(Number(data.lead_time))}` : '';
   Plotly.newPlot('stationChart', traces, {
     ...PLOT_LAYOUT,
-    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label}`,
+    title: `${data.station.name || stationId} — ${paramsMeta[document.getElementById('parameter').value]?.label}${initNote}${ltNote}`,
     xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Valid Time (UTC)' },
-    yaxis: { ...PLOT_LAYOUT.yaxis, title: paramsMeta[param]?.unit || '' },
+    yaxis: { ...PLOT_LAYOUT.yaxis, title: paramsMeta[document.getElementById('parameter').value]?.unit || '' },
     legend: { orientation: 'h', y: -0.15 },
   }, { responsive: true });
 

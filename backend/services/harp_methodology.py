@@ -35,29 +35,6 @@ HARP_SCORES = [
     {"id": "correlation", "formula": "Pearson(fcst, obs)", "note": "Korelasi linear — bagian det_verify harpPoint"},
 ]
 
-HARP_RANKING = (
-    "Peringkat mengikuti harpPoint det_verify() untuk variabel kontinu (thresholds=NULL): mean "
-    "bias, RMSE, MAE, stde lintas semua parameter × lead time (D+0–D+7), filter init cycle sidebar. "
-    "Urutan = mean RMSE terendah (#1). HARP tidak punya skill score generik untuk kontinu — skill "
-    "(Heidke, Brier SS, dll.) hanya muncul jika verifikasi kategorikal dengan thresholds=. "
-    "MONAS menambahkan mean korelasi (Pearson) sebagai pelengkap. KPI di tab Overview mengikuti "
-    "parameter & lead time sidebar; ranking diagregasi dari cache SQLite (pre-compute saat pipeline, "
-    "pola sama PSIIDN)."
-)
-
-HARP_SKILL_SCORES = [
-    {
-        "context": "det_verify() + thresholds (kategorikal)",
-        "scores": "heidke_skill_score, pierce_skill_score, kuiper_skill_score, odds_ratio_skill_score, equitable_threat_score, …",
-        "note": "Butuh argumen thresholds= pada det_verify(). Contoh: suhu ≥30°C, hujan ≥5 mm.",
-    },
-    {
-        "context": "ens_verify() + thresholds (ensemble probabilistik)",
-        "scores": "brier_skill_score (vs klimatologi observasi), fair_brier_score, roc_area, CRPS, …",
-        "note": "Referensi default = sample climatology. MONAS saat ini fokus deterministik point (det_verify).",
-    },
-]
-
 HARP_QC = (
     "Outlier dibuang jika |e| > 4σ. Arah angin: error melingkar (circular). "
     "Lead time D+0 (analysis) s/d D+7 (168 jam). "
@@ -71,14 +48,6 @@ HARP_PYTHON_NOTE = (
     "menggantikan workflow R→SQLite yang dipakai di lingkungan litbangweb."
 )
 
-HARP_CACHE = (
-    "Pola PSIIDN: semua kalkulasi verifikasi dijalankan saat pipeline (bukan saat buka website). "
-    "Hasil disimpan di SQLite — verification_scores (agregat), verification_station_scores (peta), "
-    "ranking_cache (peringkat). Dashboard hanya membaca cache. Backfill otomatis saat startup jika "
-    "skor ada tapi cache belum terisi; manual: python scripts/rebuild_dashboard_cache.py"
-)
-
-
 def get_methodology() -> dict:
     return {
         "title": "Metode HARP Point Verification",
@@ -87,15 +56,7 @@ def get_methodology() -> dict:
         "workflow": HARP_WORKFLOW,
         "scores": HARP_SCORES,
         "qc": HARP_QC,
-        "ranking": HARP_RANKING,
-        "skill_scores": HARP_SKILL_SCORES,
-        "cache": HARP_CACHE,
         "python_equivalence": HARP_PYTHON_NOTE,
-        "implementation": {
-            "interpolation": "RegularGridInterpolator (Python/scipy) — setara harpIO transformation=interpolate",
-            "verification": "backend/services/verification.py — det_verify, common_cases, compute_ranking",
-            "lead_time": "0–168 jam (D+0 … D+7), step 3 jam",
-        },
         "data_sources": {
             "InaNWP": "NetCDF real (*-asim.nc)",
             "InaCAWO": "Dummy (derived dari InaNWP) — NC belum tersedia",

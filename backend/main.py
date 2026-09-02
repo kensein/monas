@@ -307,30 +307,57 @@ def station_detail(
     parameter: str = Query("temp_drybulb_c_tttttt"),
     models: str = Query("InaNWP,InaCAWO,GFS,IFS"),
     init_time: str | None = None,
+    lead_time: int | None = None,
 ) -> dict[str, Any]:
     from backend.services.obs_fetcher import load_forecasts
+    from backend.services.pipeline import get_available_cycles
     from backend.services.time_utils import normalize_valid_time
 
     model_list = [m.strip() for m in models.split(",") if m.strip()]
-    obs_df = load_observations(parameters=[parameter], station_id=station_id)
-    obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
-    fcst_df = load_forecasts(
-        models=model_list, parameters=[parameter], init_time=init_time, station_id=station_id,
-    )
-    fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
+    resolved_init = init_time
+    if not resolved_init:
+        done = [c for c in get_available_cycles() if c.get("status") == "done"]
+        if done:
+            resolved_init = done[0]["init_time"]
 
-    times = sorted(set(obs_df["valid_time"].dropna()) | set(fcst_df["valid_time"].dropna()))
-    series = []
-    for vt in times:
-        entry: dict[str, Any] = {"valid_time": vt}
-        obs_row = obs_df[obs_df["valid_time"] == vt]
-        if not obs_row.empty:
-            entry["obs"] = float(obs_row.iloc[0]["value"])
+    obs_df = load_observations(parameters=[parameter], station_id=station_id)
+    if obs_df.empty:
+        obs_df = obs_df.assign(valid_time=pd.Series(dtype=str))
+    else:
+        obs_df = obs_df.copy()
+        obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
+
+    fcst_df = load_forecasts(
+        models=model_list,
+        parameters=[parameter],
+        init_time=resolved_init,
+        station_id=station_id,
+        lead_time=lead_time,
+    )
+    if fcst_df.empty:
+        fcst_wide = pd.DataFrame(columns=["valid_time"])
+    else:
+        fcst_df = fcst_df.copy()
+        fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
+        fcst_wide = fcst_df.pivot_table(
+            index="valid_time", columns="model", values="fcst", aggfunc="first",
+        ).reset_index()
+
+    obs_sub = obs_df[["valid_time", "value"]].drop_duplicates("valid_time").rename(columns={"value": "obs"})
+    merged = obs_sub.merge(fcst_wide, on="valid_time", how="outer")
+    merged = merged.sort_values("valid_time")
+
+    series: list[dict[str, Any]] = []
+    for _, row in merged.iterrows():
+        vt = row["valid_time"]
+        if pd.isna(vt):
+            continue
+        entry: dict[str, Any] = {"valid_time": str(vt)}
+        if pd.notna(row.get("obs")):
+            entry["obs"] = float(row["obs"])
         for model in model_list:
-            match = fcst_df[(fcst_df["model"] == model) & (fcst_df["valid_time"] == vt)]
-            if not match.empty:
-                entry[model] = float(match.iloc[0]["fcst"])
-                entry[f"{model}_lead"] = int(match.iloc[0]["lead_time"])
+            if model in row.index and pd.notna(row[model]):
+                entry[model] = float(row[model])
         if "obs" in entry or any(m in entry for m in model_list):
             series.append(entry)
 
@@ -339,7 +366,8 @@ def station_detail(
     return {
         "station": info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id},
         "parameter": parameter,
-        "init_time": init_time,
+        "init_time": resolved_init,
+        "lead_time": lead_time,
         "series": series,
     }
 
