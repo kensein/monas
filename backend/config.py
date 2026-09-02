@@ -39,7 +39,8 @@ SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "true").lower() in ("1", "true", "y
 # Single NC file override (Opsi B: C:\Users\...\2026070112-d01-asim.nc)
 LOCAL_NC_PATH = os.getenv("LOCAL_NC_PATH", "").strip().strip('"').strip("'")
 
-# Large-file threshold for chunked xarray reads (bytes)
+# Katalog stasiun BMKG (WMO + lat/lon) — default: data/stations_bmkg.json
+STATION_CATALOG_PATH = os.getenv("STATION_CATALOG_PATH", "")
 NC_CHUNK_THRESHOLD_BYTES = int(os.getenv("NC_CHUNK_THRESHOLD_BYTES", str(500_000_000)))
 
 # BMKG Sinoptik API (v21)

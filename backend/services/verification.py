@@ -147,9 +147,15 @@ def build_verification_pairs(
     circular: bool = False,
 ) -> pd.DataFrame:
     """Join forecast to observations (HARP join_to_fcst)."""
+    from backend.services.time_utils import normalize_valid_time
+
     keys = ["station_id", "valid_time"]
-    merged = fcst_df.merge(
-        obs_df[obs_df["parameter"] == parameter][keys + ["value"]].rename(columns={"value": "obs"}),
+    obs_sub = obs_df[obs_df["parameter"] == parameter][keys + ["value"]].copy()
+    fcst_sub = fcst_df.copy()
+    obs_sub["valid_time"] = obs_sub["valid_time"].map(normalize_valid_time)
+    fcst_sub["valid_time"] = fcst_sub["valid_time"].map(normalize_valid_time)
+    merged = fcst_sub.merge(
+        obs_sub.rename(columns={"value": "obs"}),
         on=keys,
         how="inner",
     )

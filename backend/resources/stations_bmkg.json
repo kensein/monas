@@ -1,0 +1,1505 @@
+[
+  {
+    "wmo_id": "96001",
+    "name": "Stasiun Meteorologi Maimun Saleh",
+    "region": "Nanggroe Aceh Darussalam",
+    "lat": 5.87655,
+    "lon": 95.33785,
+    "elevation": 126.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96009",
+    "name": "Stasiun Meteorologi Malikussaleh",
+    "region": "Nanggroe Aceh Darussalam",
+    "lat": 5.22869,
+    "lon": 96.94749,
+    "elevation": 28.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96011",
+    "name": "Stasiun Meteorologi Sultan Iskandar Muda",
+    "region": "Nanggroe Aceh Darussalam",
+    "lat": 5.52244,
+    "lon": 95.417,
+    "elevation": 20.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96041",
+    "name": "Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah I",
+    "region": "Sumatera Utara",
+    "lat": 3.5397,
+    "lon": 98.64,
+    "elevation": 0.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96015",
+    "name": "Stasiun Meteorologi Cut Nyak Dhien Nagan Raya",
+    "region": "Nanggroe Aceh Darussalam",
+    "lat": 4.04928,
+    "lon": 96.24796,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96017",
+    "name": "Stasiun Klimatologi Aceh",
+    "region": "Nanggroe Aceh Darussalam",
+    "lat": 5.404,
+    "lon": 95.464,
+    "elevation": 40.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96031",
+    "name": "Stasiun Klimatologi Sumatera Utara",
+    "region": "Sumatera Utara",
+    "lat": 3.62114,
+    "lon": 98.71485,
+    "elevation": 25.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96033",
+    "name": "Stasiun Meteorologi Maritim Belawan",
+    "region": "Sumatera Utara",
+    "lat": 3.78824,
+    "lon": 98.71492,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96035",
+    "name": "Stasiun Meteorologi Kualanamu",
+    "region": "Sumatera Utara",
+    "lat": 3.64573,
+    "lon": 98.88488,
+    "elevation": 23.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "99992",
+    "name": "Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah II",
+    "region": "Banten",
+    "lat": -6.30253,
+    "lon": 106.7564,
+    "elevation": 41.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96043",
+    "name": "Stasiun Meteorologi Silangit",
+    "region": "Sumatera Utara",
+    "lat": 2.26136,
+    "lon": 98.99357,
+    "elevation": 1420.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96071",
+    "name": "Stasiun Meteorologi Aek Godang",
+    "region": "Sumatera Utara",
+    "lat": 1.55,
+    "lon": 99.45,
+    "elevation": 281.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96073",
+    "name": "Stasiun Meteorologi FL Tobing",
+    "region": "Sumatera Utara",
+    "lat": 1.55,
+    "lon": 98.88,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96075",
+    "name": "Stasiun Meteorologi Binaka",
+    "region": "Sumatera Utara",
+    "lat": 1.1649,
+    "lon": 97.7036,
+    "elevation": 7.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96087",
+    "name": "Stasiun Meteorologi Hang Nadim",
+    "region": "Kep. Riau",
+    "lat": 1.11667,
+    "lon": 104.1167,
+    "elevation": 26.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96089",
+    "name": "Stasiun Meteorologi Raja Haji Abdullah",
+    "region": "Kep. Riau",
+    "lat": 1.03,
+    "lon": 103.38,
+    "elevation": 1.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96091",
+    "name": "Stasiun Meteorologi Raja Haji Fisabilillah",
+    "region": "Kep. Riau",
+    "lat": 0.9227,
+    "lon": 104.5289,
+    "elevation": 15.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96107",
+    "name": "Stasiun Klimatologi Riau",
+    "region": "Riau",
+    "lat": 0.407,
+    "lon": 101.217,
+    "elevation": 15.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96109",
+    "name": "Stasiun Meteorologi Sultan Syarif Kasim II",
+    "region": "Riau",
+    "lat": 0.45924,
+    "lon": 101.4474,
+    "elevation": 39.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96145",
+    "name": "Stasiun Meteorologi Tarempa",
+    "region": "Kep. Riau",
+    "lat": 3.2,
+    "lon": 106.25,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96147",
+    "name": "Stasiun Meteorologi Ranai",
+    "region": "Kep. Riau",
+    "lat": 3.91206,
+    "lon": 108.39,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96161",
+    "name": "Stasiun Meteorologi Maritim Teluk Bayur",
+    "region": "Sumatera Barat",
+    "lat": -0.99639,
+    "lon": 100.3722,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96163",
+    "name": "Stasiun Meteorologi Minangkabau",
+    "region": "Sumatera Barat",
+    "lat": -0.79355,
+    "lon": 100.2892,
+    "elevation": 6.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96167",
+    "name": "Stasiun Klimatologi Sumatera Barat",
+    "region": "Sumatera Barat",
+    "lat": -0.54549,
+    "lon": 100.2979,
+    "elevation": 128.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96169",
+    "name": "Stasiun Pemantau Atmosfer Global Bukit Koto Tabang",
+    "region": "Sumatera Barat",
+    "lat": -0.2505,
+    "lon": 100.3823,
+    "elevation": 895.0,
+    "type_mkg": ""
+  },
+  {
+    "wmo_id": "96171",
+    "name": "Stasiun Meteorologi Japura",
+    "region": "Riau",
+    "lat": -0.33,
+    "lon": 102.32,
+    "elevation": 19.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96179",
+    "name": "Stasiun Meteorologi Dabo",
+    "region": "Kep. Riau",
+    "lat": -0.48,
+    "lon": 104.58,
+    "elevation": 29.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96191",
+    "name": "Stasiun Klimatologi Jambi",
+    "region": "Jambi",
+    "lat": -1.6019,
+    "lon": 103.4844,
+    "elevation": 24.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96195",
+    "name": "Stasiun Meteorologi Sultan Thaha",
+    "region": "Jambi",
+    "lat": -1.63368,
+    "lon": 103.64,
+    "elevation": 26.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96207",
+    "name": "Stasiun Meteorologi Depati Parbo",
+    "region": "Jambi",
+    "lat": -2.083,
+    "lon": 101.45,
+    "elevation": 782.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96221",
+    "name": "Stasiun Meteorologi Sultan Mahmud Badaruddin II",
+    "region": "Sumatera Selatan",
+    "lat": -2.89468,
+    "lon": 104.7013,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96223",
+    "name": "Stasiun Klimatologi Sumatera Selatan",
+    "region": "Sumatera Selatan",
+    "lat": -2.92732,
+    "lon": 104.772,
+    "elevation": 11.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96225",
+    "name": "Taman Alat Digital Staklim Sumsel",
+    "region": "Sumatera Selatan",
+    "lat": 3.0156,
+    "lon": 104.43,
+    "elevation": 4.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96237",
+    "name": "Stasiun Meteorologi Depati Amir",
+    "region": "Kep. Bangka Belitung",
+    "lat": -2.17,
+    "lon": 106.13,
+    "elevation": 0.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96239",
+    "name": "Stasiun Klimatologi Bangka Belitung",
+    "region": "Kep. Bangka Belitung",
+    "lat": -2.518,
+    "lon": 106.422,
+    "elevation": 6.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96249",
+    "name": "Stasiun Meteorologi H. AS. Hanandjoeddin",
+    "region": "Kep. Bangka Belitung",
+    "lat": -2.75,
+    "lon": 107.75,
+    "elevation": 50.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96253",
+    "name": "Stasiun Meteorologi Fatmawati Soekarno",
+    "region": "Bengkulu",
+    "lat": -3.8582,
+    "lon": 102.3367,
+    "elevation": 24.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96255",
+    "name": "Stasiun Klimatologi Bengkulu",
+    "region": "Bengkulu",
+    "lat": -3.8652,
+    "lon": 102.3119,
+    "elevation": 12.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96291",
+    "name": "Stasiun Klimatologi Lampung",
+    "region": "Lampung",
+    "lat": -5.17236,
+    "lon": 105.18,
+    "elevation": 71.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96293",
+    "name": "Stasiun Meteorologi Maritim Panjang",
+    "region": "Lampung",
+    "lat": -5.4721,
+    "lon": 105.321,
+    "elevation": 7.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96295",
+    "name": "Stasiun Meteorologi Radin Inten II",
+    "region": "Lampung",
+    "lat": -5.16,
+    "lon": 105.11,
+    "elevation": 85.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96535",
+    "name": "Stasiun Meteorologi Paloh",
+    "region": "Kalimantan Barat",
+    "lat": 1.74,
+    "lon": 109.3,
+    "elevation": 15.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96557",
+    "name": "Stasiun Meteorologi Nangapinoh",
+    "region": "Kalimantan Barat",
+    "lat": -0.42,
+    "lon": 111.47,
+    "elevation": 40.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96559",
+    "name": "Stasiun Meteorologi Tebelian",
+    "region": "Kalimantan Barat",
+    "lat": 0.06,
+    "lon": 111.47,
+    "elevation": 31.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96565",
+    "name": "Stasiun Meteorologi Pangsuma",
+    "region": "Kalimantan Barat",
+    "lat": 0.84,
+    "lon": 112.93,
+    "elevation": 43.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96581",
+    "name": "Stasiun Meteorologi Supadio",
+    "region": "Kalimantan Barat",
+    "lat": -0.14206,
+    "lon": 109.45,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96583",
+    "name": "Stasiun Klimatologi Kalimantan Barat",
+    "region": "Kalimantan Barat",
+    "lat": 0.075,
+    "lon": 109.19,
+    "elevation": 2.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96585",
+    "name": "Stasiun Meteorologi Maritim Pontianak",
+    "region": "Kalimantan Barat",
+    "lat": -0.03,
+    "lon": 109.34,
+    "elevation": 4.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96595",
+    "name": "Stasiun Meteorologi Beringin",
+    "region": "Kalimantan Tengah",
+    "lat": -0.56,
+    "lon": 114.53,
+    "elevation": 42.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96615",
+    "name": "Stasiun Meteorologi Rahadi Oesman",
+    "region": "Kalimantan Barat",
+    "lat": -1.8,
+    "lon": 109.97,
+    "elevation": 9.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96645",
+    "name": "Stasiun Meteorologi Iskandar",
+    "region": "Kalimantan Tengah",
+    "lat": -2.73,
+    "lon": 111.66,
+    "elevation": 22.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96651",
+    "name": "Stasiun Meteorologi H. Asan",
+    "region": "Kalimantan Tengah",
+    "lat": -2.55,
+    "lon": 112.93,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96653",
+    "name": "Stasiun Meteorologi Sanggu",
+    "region": "Kalimantan Tengah",
+    "lat": -1.67,
+    "lon": 114.9,
+    "elevation": 37.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96733",
+    "name": "Stasiun Klimatologi Banten",
+    "region": "Banten",
+    "lat": -6.26151,
+    "lon": 106.7508,
+    "elevation": 27.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96737",
+    "name": "Stasiun Meteorologi Maritim Serang",
+    "region": "Banten",
+    "lat": -6.11185,
+    "lon": 106.11,
+    "elevation": 100.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96739",
+    "name": "Stasiun Meteorologi Budiarto",
+    "region": "Banten",
+    "lat": -6.2867,
+    "lon": 106.5639,
+    "elevation": 42.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96741",
+    "name": "Stasiun Meteorologi Maritim Tanjung Priok",
+    "region": "DKI Jakarta",
+    "lat": -6.10781,
+    "lon": 106.8805,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96745",
+    "name": "Pos Pengamatan Meteorologi Kemayoran",
+    "region": "DKI Jakarta",
+    "lat": -6.15559,
+    "lon": 106.84,
+    "elevation": 4.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96747",
+    "name": "Halim Perdana Kusuma Jakarta",
+    "region": "DKI Jakarta",
+    "lat": -6.27036,
+    "lon": 106.8893,
+    "elevation": 28.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96749",
+    "name": "Stasiun Meteorologi Soekarno Hatta",
+    "region": "Banten",
+    "lat": -6.12,
+    "lon": 106.65,
+    "elevation": 11.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96751",
+    "name": "Stasiun Meteorologi Citeko",
+    "region": "Jawa Barat",
+    "lat": -6.7,
+    "lon": 106.85,
+    "elevation": 920.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96753",
+    "name": "Stasiun Klimatologi Jawa Barat",
+    "region": "Jawa Barat",
+    "lat": -6.5,
+    "lon": 106.75,
+    "elevation": 207.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96791",
+    "name": "Stasiun Meteorologi Kertajati",
+    "region": "Jawa Barat",
+    "lat": -6.7344,
+    "lon": 108.263,
+    "elevation": 85.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96793",
+    "name": "Pos Meteorologi Penggung",
+    "region": "Jawa Barat",
+    "lat": -6.7553,
+    "lon": 108.539,
+    "elevation": 23.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96797",
+    "name": "Stasiun Meteorologi Maritim Tegal",
+    "region": "Jawa Tengah",
+    "lat": -6.86817,
+    "lon": 109.121,
+    "elevation": 1.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96805",
+    "name": "Stasiun Meteorologi Tunggul Wulung",
+    "region": "Jawa Tengah",
+    "lat": -7.7189,
+    "lon": 109.0149,
+    "elevation": 8.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96835",
+    "name": "Stasiun Klimatologi Jawa Tengah",
+    "region": "Jawa Tengah",
+    "lat": -6.9847,
+    "lon": 110.3812,
+    "elevation": 6.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96837",
+    "name": "Stasiun Meteorologi Maritim Tanjung Emas",
+    "region": "Jawa Tengah",
+    "lat": -6.9486,
+    "lon": 110.4199,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96839",
+    "name": "Stasiun Meteorologi Ahmad Yani",
+    "region": "Jawa Tengah",
+    "lat": -6.97683,
+    "lon": 110.3778,
+    "elevation": 5.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96851",
+    "name": "Stasiun Klimatologi DI Yogyakarta",
+    "region": "DI Yogyakarta",
+    "lat": -7.731,
+    "lon": 110.354,
+    "elevation": 182.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96859",
+    "name": "Stasiun Meteorologi Yogyakarta",
+    "region": "DI Yogyakarta",
+    "lat": -7.90746,
+    "lon": 110.0545,
+    "elevation": 7.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96925",
+    "name": "Stasiun Meteorologi Sangkapura",
+    "region": "Jawa Timur",
+    "lat": -5.8511,
+    "lon": 112.6578,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96929",
+    "name": "Stasiun Meteorologi Dhoho",
+    "region": "Jawa Timur",
+    "lat": -7.75487,
+    "lon": 111.9469,
+    "elevation": 94.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96933",
+    "name": "Stasiun Meteorologi Perak I",
+    "region": "Jawa Timur",
+    "lat": -7.2236,
+    "lon": 112.7239,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96935",
+    "name": "Stasiun Meteorologi Juanda",
+    "region": "Jawa Timur",
+    "lat": -7.3846,
+    "lon": 112.7833,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96937",
+    "name": "Stasiun Meteorologi Maritim Tanjung Perak",
+    "region": "Jawa Timur",
+    "lat": -7.2053,
+    "lon": 112.7353,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96939",
+    "name": "Stasiun Meteorologi Tuban",
+    "region": "Jawa Timur",
+    "lat": -6.8229,
+    "lon": 111.9918,
+    "elevation": 5.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96943",
+    "name": "Stasiun Klimatologi Jawa Timur",
+    "region": "Jawa Timur",
+    "lat": -7.9008,
+    "lon": 112.5979,
+    "elevation": 590.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96973",
+    "name": "Stasiun Meteorologi Trunojoyo",
+    "region": "Jawa Timur",
+    "lat": -7.03976,
+    "lon": 113.914,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96987",
+    "name": "Stasiun Meteorologi Banyuwangi",
+    "region": "Jawa Timur",
+    "lat": -8.215,
+    "lon": 114.3553,
+    "elevation": 52.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "99921",
+    "name": "Pos Meteorologi Liwa Lampung",
+    "region": "Lampung",
+    "lat": -5.01732,
+    "lon": 104.0587,
+    "elevation": 938.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96003",
+    "name": "Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah III",
+    "region": "Bali",
+    "lat": -8.7381,
+    "lon": 115.1786,
+    "elevation": 0.0,
+    "type_mkg": ""
+  },
+  {
+    "wmo_id": "99994",
+    "name": "Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah IV",
+    "region": "Sulawesi Selatan",
+    "lat": -5.14283,
+    "lon": 119.4523,
+    "elevation": 72.0,
+    "type_mkg": ""
+  },
+  {
+    "wmo_id": "96503",
+    "name": "Stasiun Meteorologi Nunukan",
+    "region": "Kalimantan Utara",
+    "lat": 4.13,
+    "lon": 117.67,
+    "elevation": 8.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96505",
+    "name": "Stasiun Meteorologi Yuvai Semaring",
+    "region": "Kalimantan Utara",
+    "lat": 3.86,
+    "lon": 115.68,
+    "elevation": 1090.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96509",
+    "name": "Stasiun Meteorologi Juwata",
+    "region": "Kalimantan Utara",
+    "lat": 3.33,
+    "lon": 117.57,
+    "elevation": 6.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96525",
+    "name": "Stasiun Meteorologi Tanjung Harapan",
+    "region": "Kalimantan Utara",
+    "lat": 2.5,
+    "lon": 117.22,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96529",
+    "name": "Stasiun Meteorologi Kalimarau",
+    "region": "Kalimantan Timur",
+    "lat": 2.14562,
+    "lon": 117.4338,
+    "elevation": 13.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96607",
+    "name": "Stasiun Meteorologi Aji Pangeran Tumenggung Pranoto",
+    "region": "Kalimantan Timur",
+    "lat": -0.48,
+    "lon": 117.16,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96633",
+    "name": "Stasiun Meteorologi Sultan Aji Muhammad Sulaiman Sepinggan",
+    "region": "Kalimantan Timur",
+    "lat": -1.26,
+    "lon": 116.9,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96655",
+    "name": "Stasiun Meteorologi Tjilik Riwut",
+    "region": "Kalimantan Tengah",
+    "lat": -2.22,
+    "lon": 113.95,
+    "elevation": 27.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96685",
+    "name": "Stasiun Meteorologi Syamsudin Noor",
+    "region": "Kalimantan Selatan",
+    "lat": -3.442,
+    "lon": 114.754,
+    "elevation": 32.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "96687",
+    "name": "Stasiun Klimatologi Kalimantan Selatan",
+    "region": "Kalimantan Selatan",
+    "lat": -3.46225,
+    "lon": 114.84,
+    "elevation": 55.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "96695",
+    "name": "Stasiun Meteorologi Gusti Syamsir Alam",
+    "region": "Kalimantan Selatan",
+    "lat": -3.3,
+    "lon": 116.17,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97008",
+    "name": "Stasiun Meteorologi Naha",
+    "region": "Sulawesi Utara",
+    "lat": 3.68594,
+    "lon": 125.5288,
+    "elevation": 6.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97012",
+    "name": "Stasiun Klimatologi Sulawesi Utara",
+    "region": "Sulawesi Utara",
+    "lat": 1.54585,
+    "lon": 124.9233,
+    "elevation": 84.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97014",
+    "name": "Stasiun Meteorologi Sam Ratulangi",
+    "region": "Sulawesi Utara",
+    "lat": 1.54575,
+    "lon": 124.9234,
+    "elevation": 80.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97016",
+    "name": "Stasiun Meteorologi Maritim Bitung",
+    "region": "Sulawesi Utara",
+    "lat": 1.4431,
+    "lon": 125.1797,
+    "elevation": 4.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97028",
+    "name": "Stasiun Meteorologi Sultan Bantilan",
+    "region": "Sulawesi Tengah",
+    "lat": 1.12114,
+    "lon": 120.7943,
+    "elevation": 8.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97048",
+    "name": "Stasiun Meteorologi Djalaluddin",
+    "region": "Gorontalo",
+    "lat": 0.6385,
+    "lon": 122.8525,
+    "elevation": 33.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97052",
+    "name": "Stasiun Klimatologi Gorontalo",
+    "region": "Gorontalo",
+    "lat": 0.556,
+    "lon": 123.14,
+    "elevation": 15.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97072",
+    "name": "Stasiun Meteorologi Mutiara SIS Al-Jufrie",
+    "region": "Sulawesi Tengah",
+    "lat": -0.91589,
+    "lon": 119.9055,
+    "elevation": 79.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97086",
+    "name": "Stasiun Meteorologi Syukuran Aminudin Amir",
+    "region": "Sulawesi Tengah",
+    "lat": -1.04064,
+    "lon": 122.771,
+    "elevation": 19.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97094",
+    "name": "Stasiun Pemantau Atmosfer Global Lore Lindu Bariri",
+    "region": "Sulawesi Tengah",
+    "lat": -1.6499,
+    "lon": 120.183,
+    "elevation": 1369.0,
+    "type_mkg": ""
+  },
+  {
+    "wmo_id": "97096",
+    "name": "Stasiun Meteorologi Kasiguncu",
+    "region": "Sulawesi Tengah",
+    "lat": -1.42038,
+    "lon": 120.657,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97116",
+    "name": "Stasiun Meteorologi Tampa Padang Mamuju",
+    "region": "Sulawesi Barat",
+    "lat": -2.58939,
+    "lon": 119.0295,
+    "elevation": 0.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97120",
+    "name": "Pos Meteorologi Majene",
+    "region": "Sulawesi Barat",
+    "lat": -3.55074,
+    "lon": 118.9805,
+    "elevation": 29.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97124",
+    "name": "Stasiun Meteorologi Toraja",
+    "region": "Sulawesi Selatan",
+    "lat": -3.04524,
+    "lon": 119.8189,
+    "elevation": 829.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97126",
+    "name": "Stasiun Meteorologi Andi Djemma",
+    "region": "Sulawesi Selatan",
+    "lat": -2.55472,
+    "lon": 120.3242,
+    "elevation": 43.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97142",
+    "name": "Stasiun Meteorologi Sangia Ni Bandera",
+    "region": "Sulawesi Tenggara",
+    "lat": -4.18059,
+    "lon": 121.6108,
+    "elevation": 14.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97144",
+    "name": "Stasiun Meteorologi Maritim Kendari",
+    "region": "Sulawesi Tenggara",
+    "lat": -3.9701,
+    "lon": 122.5895,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97150",
+    "name": "Stasiun Klimatologi Sulawesi Tenggara",
+    "region": "Sulawesi Tenggara",
+    "lat": -4.056,
+    "lon": 122.449,
+    "elevation": 30.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97180",
+    "name": "Stasiun Meteorologi Sultan Hasanuddin",
+    "region": "Sulawesi Selatan",
+    "lat": -5.07,
+    "lon": 119.55,
+    "elevation": 14.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97182",
+    "name": "Stasiun Meteorologi Maritim Paotere",
+    "region": "Sulawesi Selatan",
+    "lat": -5.11375,
+    "lon": 119.4198,
+    "elevation": 5.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97184",
+    "name": "Stasiun Klimatologi Sulawesi Selatan",
+    "region": "Sulawesi Selatan",
+    "lat": -4.9308,
+    "lon": 119.572,
+    "elevation": 13.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97192",
+    "name": "Stasiun Meteorologi Beto Ambari",
+    "region": "Sulawesi Tenggara",
+    "lat": -5.47,
+    "lon": 122.62,
+    "elevation": 233.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97230",
+    "name": "Stasiun Meteorologi I Gusti Ngurah Rai",
+    "region": "Bali",
+    "lat": -8.75,
+    "lon": 115.17,
+    "elevation": 4.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97234",
+    "name": "Pos Pengamatan Kahang-Kahang",
+    "region": "Bali",
+    "lat": -8.365,
+    "lon": 115.6108,
+    "elevation": 155.0,
+    "type_mkg": "g"
+  },
+  {
+    "wmo_id": "97236",
+    "name": "Stasiun Klimatologi Bali",
+    "region": "Bali",
+    "lat": -8.341,
+    "lon": 114.6176,
+    "elevation": 25.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97240",
+    "name": "Stasiun Meteorologi Zainuddin Abdul Madjid",
+    "region": "Nusa Tenggara Barat",
+    "lat": -8.75277,
+    "lon": 116.2498,
+    "elevation": 92.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97242",
+    "name": "Stasiun Klimatologi Nusa Tenggara Barat",
+    "region": "Nusa Tenggara Barat",
+    "lat": -8.63627,
+    "lon": 116.1709,
+    "elevation": 55.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97260",
+    "name": "Stasiun Meteorologi Sultan Muhammad Kaharuddin",
+    "region": "Nusa Tenggara Barat",
+    "lat": -8.48845,
+    "lon": 117.4134,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97270",
+    "name": "Stasiun Meteorologi Sultan Muhammad Salahuddin",
+    "region": "Nusa Tenggara Barat",
+    "lat": -8.54279,
+    "lon": 118.6928,
+    "elevation": 5.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97282",
+    "name": "Stasiun Meteorologi Komodo",
+    "region": "Nusa Tenggara Timur",
+    "lat": -8.48673,
+    "lon": 119.8868,
+    "elevation": 67.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97284",
+    "name": "Stasiun Meteorologi Frans Sales Lega",
+    "region": "Nusa Tenggara Timur",
+    "lat": -8.63,
+    "lon": 120.45,
+    "elevation": 1070.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97300",
+    "name": "Stasiun Meteorologi Fransiskus Xaverius Seda",
+    "region": "Nusa Tenggara Timur",
+    "lat": -8.63577,
+    "lon": 122.2375,
+    "elevation": 28.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97310",
+    "name": "Stasiun Meteorologi Gewayantana",
+    "region": "Nusa Tenggara Timur",
+    "lat": -8.2752,
+    "lon": 122.9986,
+    "elevation": 9.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97320",
+    "name": "Stasiun Meteorologi Mali",
+    "region": "Nusa Tenggara Timur",
+    "lat": -8.13471,
+    "lon": 124.59,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97340",
+    "name": "Stasiun Meteorologi Umbu Mehang Kunda",
+    "region": "Nusa Tenggara Timur",
+    "lat": -9.66944,
+    "lon": 120.2997,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97370",
+    "name": "Stasiun Meteorologi Maritim Tenau",
+    "region": "Nusa Tenggara Timur",
+    "lat": -10.1886,
+    "lon": 123.5291,
+    "elevation": 23.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97372",
+    "name": "Stasiun Meteorologi Eltari",
+    "region": "Nusa Tenggara Timur",
+    "lat": -10.1678,
+    "lon": 123.6704,
+    "elevation": 102.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97374",
+    "name": "Stasiun Klimatologi Nusa Tenggara Timur",
+    "region": "Nusa Tenggara Timur",
+    "lat": -10.1386,
+    "lon": 123.6672,
+    "elevation": 19.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97378",
+    "name": "Stasiun Meteorologi David Constatijn Saudale",
+    "region": "Nusa Tenggara Timur",
+    "lat": -10.7666,
+    "lon": 123.074,
+    "elevation": 141.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97380",
+    "name": "Stasiun Meteorologi Tardamu",
+    "region": "Nusa Tenggara Timur",
+    "lat": -10.5,
+    "lon": 121.83,
+    "elevation": 15.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "99995",
+    "name": "Balai Besar Meteorologi Klimatologi dan Geofisika Wilayah V",
+    "region": "Papua",
+    "lat": -2.57522,
+    "lon": 140.6862,
+    "elevation": 0.0,
+    "type_mkg": ""
+  },
+  {
+    "wmo_id": "97406",
+    "name": "Stasiun Meteorologi Gamar Malamo",
+    "region": "Maluku Utara",
+    "lat": 1.84092,
+    "lon": 127.7905,
+    "elevation": 130.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97430",
+    "name": "Stasiun Meteorologi Sultan Babullah",
+    "region": "Maluku Utara",
+    "lat": 0.8333,
+    "lon": 127.38,
+    "elevation": 33.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97460",
+    "name": "Stasiun Meteorologi Oesman Sadik",
+    "region": "Maluku Utara",
+    "lat": -0.63784,
+    "lon": 127.5,
+    "elevation": 14.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97500",
+    "name": "Stasiun Pemantau Atmosfer Global Puncak Vihara Klademak",
+    "region": "Papua Barat",
+    "lat": -0.981,
+    "lon": 131.301,
+    "elevation": 10.0,
+    "type_mkg": ""
+  },
+  {
+    "wmo_id": "97502",
+    "name": "Stasiun Meteorologi Domine Eduard Osok",
+    "region": "Papua Barat",
+    "lat": -0.89118,
+    "lon": 131.2858,
+    "elevation": 0.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97530",
+    "name": "Stasiun Meteorologi Rendani",
+    "region": "Papua Barat",
+    "lat": -0.89227,
+    "lon": 134.0504,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97560",
+    "name": "Stasiun Meteorologi Frans Kaisiepo",
+    "region": "Papua",
+    "lat": -1.19069,
+    "lon": 136.1036,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97570",
+    "name": "Stasiun Meteorologi Sudjarwo Tjondro Negoro",
+    "region": "Papua",
+    "lat": -1.8754,
+    "lon": 136.2399,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97580",
+    "name": "Stasiun Meteorologi Mararena",
+    "region": "Papua",
+    "lat": -1.85,
+    "lon": 138.75,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97600",
+    "name": "Stasiun Meteorologi Emalamo",
+    "region": "Maluku Utara",
+    "lat": -2.05,
+    "lon": 126.0,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97630",
+    "name": "Stasiun Meteorologi Torea",
+    "region": "Papua Barat",
+    "lat": -2.91938,
+    "lon": 132.265,
+    "elevation": 126.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97682",
+    "name": "Stasiun Meteorologi Nabire",
+    "region": "Papua",
+    "lat": -3.39712,
+    "lon": 135.3917,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97686",
+    "name": "Stasiun Meteorologi Wamena Jaya Wijaya",
+    "region": "Papua",
+    "lat": -4.08861,
+    "lon": 138.9464,
+    "elevation": 1653.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97690",
+    "name": "Stasiun Meteorologi Sentani",
+    "region": "Papua",
+    "lat": -2.57,
+    "lon": 140.48,
+    "elevation": 96.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97692",
+    "name": "Stasiun Klimatologi Jayapura",
+    "region": "Papua",
+    "lat": -2.59231,
+    "lon": 140.1679,
+    "elevation": 70.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97694",
+    "name": "Stasiun Klimatologi Papua Barat",
+    "region": "Papua Barat",
+    "lat": -1.47,
+    "lon": 134.19,
+    "elevation": 20.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97698",
+    "name": "Stasiun Meteorologi Dok II Jayapura",
+    "region": "Papua",
+    "lat": -2.53,
+    "lon": 140.72,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97700",
+    "name": "Stasiun Meteorologi Namlea",
+    "region": "Maluku",
+    "lat": -3.25,
+    "lon": 127.08,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97722",
+    "name": "Stasiun Meteorologi Amahai",
+    "region": "Maluku",
+    "lat": -3.3464,
+    "lon": 128.9284,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97724",
+    "name": "Stasiun Meteorologi Pattimura",
+    "region": "Maluku",
+    "lat": -3.7114,
+    "lon": 128.0957,
+    "elevation": 14.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97726",
+    "name": "Stasiun Klimatologi Maluku",
+    "region": "Maluku",
+    "lat": -3.25,
+    "lon": 128.4,
+    "elevation": 5.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97730",
+    "name": "Stasiun Meteorologi Maritim Ambon",
+    "region": "Maluku",
+    "lat": -3.79053,
+    "lon": 128.1008,
+    "elevation": 3.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97748",
+    "name": "Stasiun Meteorologi Kuffar",
+    "region": "Maluku",
+    "lat": -3.8813,
+    "lon": 130.88,
+    "elevation": 2.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97760",
+    "name": "Stasiun Meteorologi Utarom",
+    "region": "Papua Barat",
+    "lat": -3.64333,
+    "lon": 133.6969,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97780",
+    "name": "Stasiun Meteorologi Enarotali",
+    "region": "Papua",
+    "lat": -3.92688,
+    "lon": 136.38,
+    "elevation": 1650.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97790",
+    "name": "Stasiun Meteorologi Bandaneira",
+    "region": "Maluku",
+    "lat": -4.52338,
+    "lon": 129.9043,
+    "elevation": 15.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97796",
+    "name": "Stasiun Meteorologi Mozez Kilangin",
+    "region": "Papua",
+    "lat": -4.53006,
+    "lon": 136.8935,
+    "elevation": 30.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97810",
+    "name": "Stasiun Meteorologi Karel Sadsuitubun",
+    "region": "Maluku",
+    "lat": -5.6637,
+    "lon": 132.7362,
+    "elevation": 10.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97876",
+    "name": "Stasiun Meteorologi Tanah Merah",
+    "region": "Papua",
+    "lat": -6.1,
+    "lon": 140.31,
+    "elevation": 97.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97900",
+    "name": "Stasiun Meteorologi Mathilda Batlayeri",
+    "region": "Maluku",
+    "lat": -7.98,
+    "lon": 131.3,
+    "elevation": 24.0,
+    "type_mkg": "m"
+  },
+  {
+    "wmo_id": "97978",
+    "name": "Stasiun Klimatologi Merauke",
+    "region": "Papua",
+    "lat": -8.387,
+    "lon": 140.517,
+    "elevation": 5.0,
+    "type_mkg": "k"
+  },
+  {
+    "wmo_id": "97980",
+    "name": "Stasiun Meteorologi Mopah",
+    "region": "Papua",
+    "lat": -8.52019,
+    "lon": 140.4157,
+    "elevation": 0.0,
+    "type_mkg": "m"
+  }
+]

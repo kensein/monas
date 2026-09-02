@@ -12,6 +12,7 @@ import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
 
 from backend.config import MAX_LEAD_TIME_HOURS, MODEL_VAR_MAP, NC_CHUNK_THRESHOLD_BYTES
+from backend.services.time_utils import normalize_valid_time
 
 
 def parse_init_time(filename: str) -> datetime | None:
@@ -206,7 +207,7 @@ def _extract_wind_at_times(
                     records.append({
                         "model": model, "station_id": st["station_id"],
                         "init_time": init_time.isoformat(), "lead_time": lt,
-                        "valid_time": valid_time.isoformat(),
+                        "valid_time": normalize_valid_time(valid_time),
                         "parameter": "wind_speed_ff", "fcst": wsv,
                     })
                 wdv = _scalar_or_none(wd[si])
@@ -214,7 +215,7 @@ def _extract_wind_at_times(
                     records.append({
                         "model": model, "station_id": st["station_id"],
                         "init_time": init_time.isoformat(), "lead_time": lt,
-                        "valid_time": valid_time.isoformat(),
+                        "valid_time": normalize_valid_time(valid_time),
                         "parameter": "wind_dir_deg_dd", "fcst": wdv,
                     })
         return records
@@ -237,7 +238,7 @@ def _extract_wind_at_times(
                 records.append({
                     "model": model, "station_id": st["station_id"],
                     "init_time": init_time.isoformat(), "lead_time": lt,
-                    "valid_time": valid_time.isoformat(),
+                    "valid_time": normalize_valid_time(valid_time),
                     "parameter": "wind_speed_ff", "fcst": wsv,
                 })
             wdv = _scalar_or_none(wd_i[si])
@@ -245,7 +246,7 @@ def _extract_wind_at_times(
                 records.append({
                     "model": model, "station_id": st["station_id"],
                     "init_time": init_time.isoformat(), "lead_time": lt,
-                    "valid_time": valid_time.isoformat(),
+                    "valid_time": normalize_valid_time(valid_time),
                     "parameter": "wind_dir_deg_dd", "fcst": wdv,
                 })
     return records
@@ -312,7 +313,7 @@ def read_point_forecast(
                         "station_id": st["station_id"],
                         "init_time": init_time.isoformat(),
                         "lead_time": lt,
-                        "valid_time": valid_time.isoformat(),
+                        "valid_time": normalize_valid_time(valid_time),
                         "parameter": param,
                         "fcst": val,
                     })

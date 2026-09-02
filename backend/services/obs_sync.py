@@ -113,11 +113,18 @@ async def fetch_and_export_sinoptik(
 def import_obs_from_json_dir(
     directory: str | Path | None = None,
     pattern: str = "sinoptik_*.json",
+    clear_existing: bool = False,
 ) -> dict[str, Any]:
     """Import semua file JSON observasi ke SQLite (untuk litbangweb / pipeline)."""
     directory = Path(directory or SFTP_OBS_PATH)
     if not directory.is_dir():
         return {"files": 0, "records_saved": 0, "error": f"Folder tidak ada: {directory}"}
+
+    if clear_existing:
+        from backend.services.obs_fetcher import clear_verification_data
+        cleared = clear_verification_data()
+    else:
+        cleared = {}
 
     total_saved = 0
     files_loaded = 0
@@ -136,7 +143,10 @@ def import_obs_from_json_dir(
         upsert_stations_from_records(records)
         files_loaded += 1
 
-    return {"files": files_loaded, "records_saved": total_saved, "directory": str(directory)}
+    result = {"files": files_loaded, "records_saved": total_saved, "directory": str(directory)}
+    if cleared:
+        result["cleared"] = cleared
+    return result
 
 
 def upload_obs_exports_to_litbangweb(

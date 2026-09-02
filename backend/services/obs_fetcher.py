@@ -22,6 +22,7 @@ from backend.config import (
     SINOPTIK_PARAMETERS,
 )
 from backend.services.bmkg_export import fetch_sinoptik_range
+from backend.services.time_utils import normalize_valid_time
 
 
 def get_db() -> sqlite3.Connection:
@@ -139,8 +140,16 @@ def upsert_stations_from_records(records: list[dict[str, Any]]) -> None:
         name = rec.get("station_name") or sid
         lat = rec.get("latitude") or rec.get("lat")
         lon = rec.get("longitude") or rec.get("lon")
+        if lat is None or lon is None:
+            from backend.services.station_catalog import catalog_to_dataframe
+            cat = catalog_to_dataframe()
+            hit = cat[cat["station_id"] == sid]
+            if not hit.empty:
+                lat = lat if lat is not None else hit.iloc[0]["lat"]
+                lon = lon if lon is not None else hit.iloc[0]["lon"]
+                name = hit.iloc[0]["name"] or name
         conn.execute(
-            "INSERT OR IGNORE INTO stations (station_id, wmo_id, name, lat, lon, region) VALUES (?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO stations (station_id, wmo_id, name, lat, lon, region) VALUES (?,?,?,?,?,?)",
             (sid, sid, name, lat, lon, rec.get("region")),
         )
     conn.commit()
@@ -173,6 +182,9 @@ def normalize_obs_records(records: list[Any]) -> pd.DataFrame:
             or rec.get("observation_time") or rec.get("time")
         )
         if not station_id or not valid_time:
+            continue
+        valid_time = normalize_valid_time(valid_time)
+        if not valid_time:
             continue
 
         for param in numeric_params:
@@ -301,7 +313,28 @@ def cache_obs_json(data: list[dict]) -> int:
     return save_observations(df)
 
 
+def clear_verification_data() -> dict[str, int]:
+    """Hapus obs/forecast/skor lama sebelum re-import dengan katalog WMO."""
+    conn = get_db()
+    obs = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+    fcst = conn.execute("SELECT COUNT(*) FROM forecasts").fetchone()[0]
+    scores = conn.execute("SELECT COUNT(*) FROM verification_scores").fetchone()[0]
+    conn.execute("DELETE FROM observations")
+    conn.execute("DELETE FROM forecasts")
+    conn.execute("DELETE FROM verification_scores")
+    conn.commit()
+    conn.close()
+    return {"observations_deleted": obs, "forecasts_deleted": fcst, "scores_deleted": scores}
+
+
 def get_stations() -> pd.DataFrame:
+    from backend.services.station_catalog import catalog_to_dataframe, sync_catalog_to_db
+
+    df = catalog_to_dataframe()
+    if not df.empty:
+        sync_catalog_to_db()
+        return df
+
     conn = get_db()
     df = pd.read_sql_query("SELECT * FROM stations", conn)
     conn.close()

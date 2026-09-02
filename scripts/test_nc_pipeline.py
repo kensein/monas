@@ -70,13 +70,17 @@ def cmd_ingest(nc_path: Path, model: str) -> None:
     print(f"  stations: {result.get('stations')}")
 
 
-def cmd_full(nc_path: Path, model: str, fetch_obs: bool) -> None:
+def cmd_full(nc_path: Path, model: str, fetch_obs: bool, fresh: bool) -> None:
     from backend.services.nc_reader import parse_init_time
     from backend.services.obs_fetcher import init_db, sync_observations_for_init
     from backend.services.pipeline import init_pipeline_db, process_model_run, register_runs
+    from backend.services.station_catalog import catalog_to_dataframe
 
     init_db()
     init_pipeline_db()
+
+    cat = catalog_to_dataframe()
+    print(f"  katalog stasiun: {len(cat)} stasiun (WMO + lat/lon)")
 
     init_time = parse_init_time(nc_path.name)
     if not init_time:
@@ -98,7 +102,7 @@ def cmd_full(nc_path: Path, model: str, fetch_obs: bool) -> None:
     else:
         from backend.config import OBS_EXPORT_DIR
         from backend.services.obs_sync import import_obs_from_json_dir
-        imported = import_obs_from_json_dir(OBS_EXPORT_DIR)
+        imported = import_obs_from_json_dir(OBS_EXPORT_DIR, clear_existing=fresh)
         print(f"  import obs JSON: {imported}")
 
     t0 = time.time()
@@ -113,6 +117,8 @@ def cmd_full(nc_path: Path, model: str, fetch_obs: bool) -> None:
     print(f"  forecast_records: {result.get('forecast_records')}")
     if result.get("obs_sync"):
         print(f"  obs_sync: {result['obs_sync']}")
+    if result.get("dummy_models"):
+        print(f"  dummy_models: {result['dummy_models']}")
 
 
 def main() -> None:
@@ -123,6 +129,11 @@ def main() -> None:
     parser.add_argument("--ingest-only", action="store_true", help="Hanya baca NC → forecast DB")
     parser.add_argument("--full", action="store_true", help="Pipeline lengkap: NC + obs + HARP")
     parser.add_argument("--no-fetch-obs", action="store_true", help="Skip fetch BMKG API")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Hapus obs/forecast/skor lama sebelum import (wajib setelah update katalog WMO)",
+    )
     args = parser.parse_args()
 
     nc_path = _resolve_nc_path(args.nc_path)
@@ -132,7 +143,7 @@ def main() -> None:
     elif args.ingest_only:
         cmd_ingest(nc_path, args.model)
     elif args.full:
-        cmd_full(nc_path, args.model, fetch_obs=not args.no_fetch_obs)
+        cmd_full(nc_path, args.model, fetch_obs=not args.no_fetch_obs, fresh=args.fresh)
     else:
         cmd_inspect(nc_path)
         print("\nGunakan --ingest-only atau --full untuk lanjut pipeline")

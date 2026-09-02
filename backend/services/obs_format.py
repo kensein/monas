@@ -25,11 +25,16 @@ def _station_id_from_row(rec: dict[str, Any]) -> str:
     name = str(rec.get("station_name") or "").strip()
     if not name:
         return ""
+    # Katalog BMKG (Matriks UPT / stations_bmkg.json)
+    from backend.services.station_catalog import lookup_wmo_by_name
+    wmo = lookup_wmo_by_name(name)
+    if wmo:
+        return wmo
     # Coba ekstrak WMO 5 digit dari nama
     m = re.search(r"\b(\d{5})\b", name)
     if m:
         return m.group(1)
-    # Nama → id stabil (hash) agar konsisten antar import
+    # Nama → id stabil (hash) — fallback jika tidak ada di katalog
     return hashlib.md5(name.encode("utf-8")).hexdigest()[:12]
 
 
