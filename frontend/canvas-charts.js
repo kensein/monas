@@ -44,6 +44,7 @@
       this.bar = null;
       this.lines = null;
       this.xNumeric = false;
+      this.highlightX = null;
       this.hover = null;
       this.onClick = opts.onClick || null;
       this._meta = [];
@@ -81,12 +82,13 @@
       requestAnimationFrame(() => this.draw());
     }
 
-    setLines({ series, title, xLabel, yLabel, xNumeric = false }) {
+    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null }) {
       this.mode = 'line';
       this.title = title || this.title;
       this.xLabel = xLabel || '';
       this.yLabel = yLabel || '';
       this.xNumeric = xNumeric;
+      this.highlightX = highlightX;
       this.lines = series;
       this.bar = null;
       requestAnimationFrame(() => this.draw());
@@ -220,6 +222,20 @@
 
       this._meta = [];
       this._drawGrid(plot.x0, plot.y0, plot.w, plot.h, yTicks, mapY);
+
+      if (this.highlightX != null && this.xNumeric) {
+        const hx = mapX(+this.highlightX);
+        ctx.save();
+        ctx.strokeStyle = '#00529B';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(hx, plot.y0);
+        ctx.lineTo(hx, plot.y0 + plot.h);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
 
       this.lines.forEach(s => {
         ctx.strokeStyle = s.color;

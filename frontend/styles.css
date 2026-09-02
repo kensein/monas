@@ -135,6 +135,12 @@ main { padding: 1rem; overflow-y: auto; }
 .detail-box th, .detail-box td { padding: 0.35rem 0.5rem; text-align: left; border-bottom: 1px solid var(--border); }
 .detail-box th { color: var(--accent); }
 
+.table-scroll { max-height: 420px; overflow: auto; }
+.station-ts-table tr.lt-highlight { background: #dbeafe; box-shadow: inset 3px 0 0 var(--accent); }
+.station-ts-table tr.lt-highlight td { font-weight: 600; }
+.lt-note { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.5rem; }
+.time-utc { font-size: 0.82rem; color: var(--muted); }
+
 #stationSelect {
   width: 100%;
   max-width: 480px;
