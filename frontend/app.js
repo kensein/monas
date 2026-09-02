@@ -31,7 +31,7 @@ const PLOT_LAYOUT = {
   yaxis: { gridcolor: '#e2e8f0', linecolor: '#cbd5e1' },
 };
 
-let map, markers = [];
+let map, mapTileLayer, markers = [];
 let paramsMeta = {};
 let maxLeadTime = 168;
 let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy' };
@@ -131,6 +131,8 @@ async function loadMethodology() {
       </table>
       <h3>Quality Control</h3>
       <p>${m.qc}</p>
+      <h3>Ranking model</h3>
+      <p>${m.ranking || ''}</p>
       <h3>Implementasi MONAS</h3>
       <ul>
         <li>Interpolasi: ${m.implementation.interpolation}</li>
@@ -284,15 +286,35 @@ async function loadScores() {
 
 function initMap() {
   map = L.map('leafletMap').setView([-2.5, 118], 5);
-  const keyParam = cartoApiKey ? `?api_key=${encodeURIComponent(cartoApiKey)}` : '';
-  L.tileLayer(
+  const keyParam = cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : '';
+  mapTileLayer = L.tileLayer(
     `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
-    { attribution: '© OSM © CARTO', subdomains: 'abcd', maxZoom: 19 },
+    {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    },
   ).addTo(map);
+}
+
+function refreshMapTiles() {
+  if (!map) return;
+  if (mapTileLayer) map.removeLayer(mapTileLayer);
+  const keyParam = cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : '';
+  mapTileLayer = L.tileLayer(
+    `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
+    {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 19,
+    },
+  ).addTo(map);
+  setTimeout(() => map.invalidateSize(), 0);
 }
 
 async function loadMap() {
   if (!map) initMap();
+  else setTimeout(() => map.invalidateSize(), 0);
   const lt = document.getElementById('leadTime').value;
   const param = document.getElementById('parameter').value;
   const model = selectedModels()[0] || 'InaNWP';

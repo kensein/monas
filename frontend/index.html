@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NWP Verification Dashboard — PSIMKG BMKG</title>
-  <link rel="icon" href="assets/bmkg-logo.svg" type="image/svg+xml" />
+  <link rel="icon" href="assets/bmkg-logo.png" type="image/png" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -13,7 +13,7 @@
 <body>
   <header>
     <div class="header-row">
-      <img src="assets/bmkg-logo.svg" alt="BMKG" class="logo" />
+      <img src="assets/bmkg-logo.png" alt="Logo BMKG" class="logo" />
       <div>
         <h1>NWP Verification Dashboard</h1>
         <p>HARP Point Verification | Pusat Standardisasi Instrumen MKG</p>
@@ -60,6 +60,7 @@
       </div>
 
       <div id="overview" class="panel active">
+        <p class="ranking-note">Peringkat dihitung dari <strong>mean RMSE</strong> semua skor tersimpan per model — dijumlahkan lintas <em>semua parameter verifikasi</em> dan <em>semua lead time</em> (D+0 s/d D+7) dalam filter init cycle yang dipilih. Model dengan mean RMSE terendah = peringkat #1. KPI di bawah grafik mengikuti parameter & lead time sidebar.</p>
         <div id="rankingCards" class="ranking-cards"></div>
         <div id="rankingChart" class="chart"></div>
         <div id="kpiGrid" class="kpi-grid"></div>

@@ -35,6 +35,13 @@ HARP_SCORES = [
     {"id": "correlation", "formula": "Pearson(fcst, obs)", "note": "Korelasi linear — bagian det_verify harpPoint"},
 ]
 
+HARP_RANKING = (
+    "Ranking model (tab Overview): untuk setiap model, MONAS menghitung rata-rata (mean) RMSE, MAE, bias, "
+    "dan korelasi dari semua baris skor verifikasi yang tersimpan — yaitu semua kombinasi parameter × lead time "
+    "(0–168 jam) sesuai filter init cycle. Urutan peringkat = mean RMSE terendah ke tertinggi (#1 = terbaik). "
+    "Skill score = 1/(1+mean_rmse). KPI di bawah grafik ranking mengikuti parameter & lead time yang dipilih di sidebar."
+)
+
 HARP_QC = (
     "Outlier dibuang jika |e| > 4σ. Arah angin: error melingkar (circular). "
     "Lead time D+0 (analysis) s/d D+7 (168 jam). "
@@ -57,6 +64,7 @@ def get_methodology() -> dict:
         "workflow": HARP_WORKFLOW,
         "scores": HARP_SCORES,
         "qc": HARP_QC,
+        "ranking": HARP_RANKING,
         "python_equivalence": HARP_PYTHON_NOTE,
         "implementation": {
             "interpolation": "RegularGridInterpolator (Python/scipy) — setara harpIO transformation=interpolate",
