@@ -1,6 +1,6 @@
 const BASE_PATH = (() => {
   const p = window.location.pathname;
-  if (p.startsWith('/verifikasi-inanwp')) return '/verifikasi-inanwp';
+  if (p.startsWith('/monas')) return '/monas';
   return '';
 })();
 

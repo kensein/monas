@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Static frontend server — pola portal PSIMKG (subpath /verifikasi-inanwp).
- * PM2: verifikasi-inanwp-web
+ * Static frontend server — pola portal PSIMKG (subpath /monas).
+ * PM2: monas-web
  */
 const http = require("http");
 const fs = require("fs");
@@ -11,7 +11,7 @@ const ROOT = __dirname;
 const FRONTEND_DIR = path.join(ROOT, "frontend");
 const PORT = parseInt(process.env.PORT || process.env.FRONTEND_PORT || "3013", 10);
 const HOST = process.env.HOSTNAME || process.env.HOST || "127.0.0.1";
-const BASE_PATH = (process.env.BASE_PATH || "/verifikasi-inanwp").replace(/\/$/, "");
+const BASE_PATH = (process.env.BASE_PATH || "/monas").replace(/\/$/, "");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",

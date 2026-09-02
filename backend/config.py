@@ -22,10 +22,10 @@ FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "3013"))
 API_HOST = os.getenv("API_HOST", os.getenv("HOST", "127.0.0.1"))
 FRONTEND_HOST = os.getenv("FRONTEND_HOST", os.getenv("HOSTNAME", "127.0.0.1"))
 
-# Subpath deploy di portal PSIMKG: https://psimkg.bmkg.go.id/verifikasi-inanwp/
+# Subpath deploy di portal PSIMKG: https://psimkg.bmkg.go.id/monas/
 BASE_PATH = os.getenv("BASE_PATH", "").rstrip("/")  # kosong = dev lokal (root)
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "https://psimkg.bmkg.go.id")
-DEPLOY_PATH = os.getenv("DEPLOY_PATH", "/var/www/verifikasi-inanwp")
+DEPLOY_PATH = os.getenv("DEPLOY_PATH", "/var/www/monas")
 
 # Production vs dev: set SEED_DEMO_DATA=false on webpsi / local with real NC
 SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "true").lower() in ("1", "true", "yes")

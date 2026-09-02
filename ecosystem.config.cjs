@@ -1,15 +1,15 @@
 /**
- * PM2 ecosystem — Verifikasi InaNWP @ psimkg.bmkg.go.id/verifikasi-inanwp
+ * PM2 ecosystem — MONAS @ psimkg.bmkg.go.id/monas
  *
- * Deploy path: /var/www/verifikasi-inanwp
+ * Deploy path: /var/www/monas
  * Start:  pm2 startOrReload ecosystem.config.cjs
- * Logs:   pm2 logs verifikasi-inanwp-api
+ * Logs:   pm2 logs monas-api
  */
 module.exports = {
   apps: [
     {
-      name: "verifikasi-inanwp-api",
-      cwd: "/var/www/verifikasi-inanwp",
+      name: "monas-api",
+      cwd: "/var/www/monas",
       script: ".venv/bin/python",
       args: "-m uvicorn backend.main:app --host 127.0.0.1 --port 8013",
       instances: 1,
@@ -25,7 +25,7 @@ module.exports = {
         PYTHONPATH: ".",
         API_HOST: "127.0.0.1",
         API_PORT: "8013",
-        BASE_PATH: "/verifikasi-inanwp",
+        BASE_PATH: "/monas",
         CORS_ORIGIN: "https://psimkg.bmkg.go.id",
         SEED_DEMO_DATA: "false",
         FORCE_PIPELINE: "true",
@@ -34,8 +34,8 @@ module.exports = {
       },
     },
     {
-      name: "verifikasi-inanwp-web",
-      cwd: "/var/www/verifikasi-inanwp",
+      name: "monas-web",
+      cwd: "/var/www/monas",
       script: "server-static.js",
       instances: 1,
       exec_mode: "fork",
@@ -49,7 +49,7 @@ module.exports = {
         NODE_ENV: "production",
         HOSTNAME: "127.0.0.1",
         PORT: "3013",
-        BASE_PATH: "/verifikasi-inanwp",
+        BASE_PATH: "/monas",
       },
     },
   ],
