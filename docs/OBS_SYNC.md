@@ -8,7 +8,7 @@ Solusi: **download di PC BMKG** (intranet) → **SFTP ke litbangweb** (otomatis)
 ```
 PC BMKG (intranet)                         litbangweb (offline)
 ─────────────────                         ────────────────────
-BMKG API login (auto token)               /opt/lampp/htdocs/monas/obs/
+BMKG API login (auto token)               /opt/lampp/htdocs/wrf/monas_obs/
      │                                    sinoptik_YYYYMMDD_....json
      ▼                                              │
 D:\nwp-data\obs\  ──── SFTP :3346 ────────────────►│
@@ -57,7 +57,7 @@ SFTP_HOST=202.90.199.54
 SFTP_PORT=3346
 SFTP_USER=litbangweb
 SFTP_PASSWORD=<password litbangweb>
-SFTP_OBS_PATH=/opt/lampp/htdocs/monas/obs
+SFTP_OBS_PATH=/opt/lampp/htdocs/wrf/monas_obs
 ```
 
 Buat folder:
@@ -119,9 +119,19 @@ print(import_obs_from_json_dir('/opt/lampp/htdocs/monas/obs'))
 
 ## Troubleshooting
 
+```cmd
+REM Diagnostik login + format response API
+python scripts\fetch_obs_local.py --test-api
+
+REM Test write permission SFTP ke litbangweb
+python scripts\fetch_obs_local.py --test-sftp
+
+REM Coba rentang saat init NC (Juli 2026)
+python scripts\fetch_obs_local.py --from 2026-07-01T00:00:00Z --to 2026-07-05T23:59:00Z
+```
+
 | Error | Solusi |
 |-------|--------|
-| `can't open file test_nc_pipeline.py` | `git pull` — script belum ada di repo lokal |
-| Login BMKG gagal (Cloudflare) | Pastikan PC di **intranet BMKG** |
-| SFTP upload gagal | Cek password litbangweb, port 3346 |
-| litbangweb obs kosong | Jalankan `--sync` dari PC lokal dulu |
+| `records: 0` | `--test-api` — cek password, intranet, coba tanggal Juli 2026 |
+| SFTP `No such file` | `--test-sftp` — path default sekarang `/opt/lampp/htdocs/wrf/monas_obs` |
+| Upload file kosong | Normal — upload dilewati jika 0 records |
