@@ -33,11 +33,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Cek coverage obs vs katalog WMO")
     parser.add_argument("--station", help="Filter satu station_id (WMO atau hash)")
     parser.add_argument("--json-dir", help="Scan rentang tanggal di file JSON (default OBS_EXPORT_DIR)")
+    parser.add_argument("--hash-only", action="store_true", help="Tampilkan semua stasiun hash (full list)")
+    parser.add_argument("--catalog-unused", action="store_true", help="Katalog WMO tanpa data obs di DB")
+    parser.add_argument("--export", metavar="FILE", help="Export CSV: hash-only → hash; catalog-unused → unused")
     args = parser.parse_args()
 
     from backend.config import OBS_EXPORT_DIR
     from backend.services.obs_fetcher import get_db, init_db
-    from backend.services.station_catalog import load_station_catalog, lookup_wmo_by_name
+    from backend.services.station_catalog import catalog_to_dataframe, load_station_catalog, lookup_wmo_by_name
 
     init_db()
     conn = get_db()
@@ -81,15 +84,52 @@ def main() -> None:
     print(f"  Pakai WMO (5 digit) : {len(wmo_stations)}  → ikut verifikasi jika ada pasangan fcst")
     print(f"  Pakai hash ID       : {len(hash_stations)}  → TIDAK ikut verifikasi")
 
-    if hash_stations:
-        print("\n--- Stasiun HASH (tidak match katalog saat import) ---")
-        for s in hash_stations[:30]:
-            print(f"  {s['station_id']}  {s['name'][:50]}")
-            print(f"      baris={s['n_rows']:,}  {s['t_min'][:10]} → {s['t_max'][:10]}")
-        if len(hash_stations) > 30:
-            print(f"  ... +{len(hash_stations) - 30} stasiun lagi")
+    catalog_df = catalog_to_dataframe()
+    obs_wmo_ids = {s["station_id"] for s in wmo_stations}
+    catalog_wmo_ids = set(catalog_df["station_id"].astype(str))
+    unused_catalog = catalog_df[~catalog_df["station_id"].astype(str).isin(obs_wmo_ids)]
 
-    if wmo_stations and not args.station:
+    print(f"\n=== Penjelasan angka ===")
+    print(f"  Katalog {len(catalog_df)} = stasiun dengan WMO+koordinat (Matriks UPT)")
+    print(f"  Obs WMO {len(wmo_stations)} = stasiun yang PUNYA data sinoptik Juni–Sep di DB")
+    print(f"  Katalog tanpa obs     : {len(unused_catalog)}  (normal — tidak semua mengirim/tidak aktif)")
+    print(f"  Obs hash {len(hash_stations)} = nama BMKG tidak match katalog (Geofisika/TNIAU/dll.)")
+    print(f"  Total unik di obs     : {len(wmo_stations) + len(hash_stations)} = WMO + hash")
+
+    if hash_stations and (args.hash_only or not args.station):
+        limit = len(hash_stations) if args.hash_only else 30
+        print(f"\n--- Stasiun HASH ({'semua' if args.hash_only else f'{limit} pertama'}) ---")
+        for s in hash_stations[:limit]:
+            wmo_hint = lookup_wmo_by_name(s["name"])
+            hint = f"  → coba WMO {wmo_hint}" if wmo_hint else ""
+            print(f"  {s['station_id']}  {s['name'][:55]}{hint}")
+            print(f"      baris={s['n_rows']:,}  {s['t_min'][:10]} → {s['t_max'][:10]}")
+        if not args.hash_only and len(hash_stations) > 30:
+            print(f"  ... +{len(hash_stations) - 30} stasiun lagi")
+            print(f"  Full list: python scripts\\check_obs_coverage.py --hash-only")
+            print(f"  Export CSV: python scripts\\check_obs_coverage.py --hash-only --export hash_stations.csv")
+
+    if args.catalog_unused and not args.station:
+        print(f"\n--- Katalog WMO TANPA data obs ({len(unused_catalog)}) ---")
+        for _, row in unused_catalog.sort_values("station_id").iterrows():
+            print(f"  {row['station_id']}  {str(row['name'])[:55]}")
+
+    if args.export:
+        import csv
+        out = Path(args.export)
+        if args.catalog_unused or "unused" in out.stem:
+            rows = unused_catalog[["station_id", "name", "lat", "lon", "region"]].to_dict("records")
+            fields = ["station_id", "name", "lat", "lon", "region"]
+        else:
+            rows = [{**s, "wmo_hint": lookup_wmo_by_name(s["name"]) or ""} for s in hash_stations]
+            fields = ["station_id", "name", "n_rows", "t_min", "t_max", "wmo_hint"]
+        with out.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+        print(f"\nExported {len(rows)} baris → {out.resolve()}")
+
+    if wmo_stations and not args.station and not args.hash_only:
         print(f"\n--- Sample stasiun WMO (10 pertama) ---")
         for s in wmo_stations[:10]:
             print(f"  {s['station_id']}  {s['name'][:45]}  {s['t_min'][:10]} → {s['t_max'][:10]}")
