@@ -56,20 +56,21 @@ async def fetch_sinoptik_chunk(
 
 def _parse_sinoptik_response(data: Any) -> list[dict[str, Any]]:
     """Parse berbagai format response BMKG API."""
+    from backend.services.obs_format import flatten_sinoptik_records
+
     if isinstance(data, list):
-        return data
+        return flatten_sinoptik_records(data)
     if isinstance(data, dict):
         for key in ("data", "results", "items", "records", "observations", "rows"):
             val = data.get(key)
             if isinstance(val, list):
-                return val
-        # Nested: {"data": {"items": [...]}}
+                return flatten_sinoptik_records(val)
         nested = data.get("data")
         if isinstance(nested, dict):
             for key in ("items", "records", "observations", "rows", "results"):
                 val = nested.get(key)
                 if isinstance(val, list):
-                    return val
+                    return flatten_sinoptik_records(val)
     return []
 
 

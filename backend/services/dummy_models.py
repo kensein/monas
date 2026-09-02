@@ -77,6 +77,7 @@ def verify_dummy_models(
     progress_cb: Callable[[float, str], None] | None = None,
 ) -> dict[str, Any]:
     """Generate dummy fcst + hitung skor HARP."""
+    from backend.services.obs_fetcher import load_observations
     from backend.services.pipeline import save_verification_scores, _ensure_observations
 
     targets = target_models or DUMMY_MODELS

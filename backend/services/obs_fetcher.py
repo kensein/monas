@@ -140,7 +140,11 @@ def upsert_stations_from_records(records: list[dict[str, Any]]) -> None:
     conn.close()
 
 
-def normalize_obs_records(records: list[dict[str, Any]]) -> pd.DataFrame:
+from backend.services.obs_format import flatten_sinoptik_records
+
+
+def normalize_obs_records(records: list[Any]) -> pd.DataFrame:
+    records = flatten_sinoptik_records(records)
     rows = []
     numeric_params = [p for p in SINOPTIK_PARAMETERS if not p.endswith("_flag") and p not in (
         "station_name", "data_timestamp", "encoded_synop", "edited_encoded_synop",
@@ -148,11 +152,16 @@ def normalize_obs_records(records: list[dict[str, Any]]) -> pd.DataFrame:
     )]
 
     for rec in records:
+        if not isinstance(rec, dict):
+            continue
         station_id = str(
             rec.get("station_wmo_id") or rec.get("wmo_id") or rec.get("station_id")
-            or rec.get("stationWmoId") or ""
+            or rec.get("stationWmoId") or rec.get("wmo") or ""
         )
-        valid_time = rec.get("data_timestamp") or rec.get("valid_time")
+        valid_time = (
+            rec.get("data_timestamp") or rec.get("valid_time") or rec.get("timestamp")
+            or rec.get("observation_time") or rec.get("time")
+        )
         if not station_id or not valid_time:
             continue
 

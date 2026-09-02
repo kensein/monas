@@ -67,7 +67,7 @@ def main() -> None:
     parser.add_argument("--sync", action="store_true", help="Upload ke litbangweb setelah download")
     parser.add_argument("--upload-only", action="store_true", help="Hanya upload JSON yang sudah ada")
     parser.add_argument("--import-db", action="store_true", help="Simpan juga ke SQLite lokal")
-    parser.add_argument("--test-api", action="store_true", help="Diagnostik login + export API")
+    parser.add_argument("--inspect-obs", metavar="FILE", help="Inspect struktur JSON observasi lokal")
     parser.add_argument("--test-sftp", action="store_true", help="Test buat folder + write ke litbangweb")
     args = parser.parse_args()
 
@@ -109,6 +109,29 @@ def main() -> None:
         start = end - timedelta(days=args.days)
         date_from = start.strftime("%Y-%m-%dT%H:%M:%SZ")
         date_to = end.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if args.inspect_obs:
+        import json
+        from backend.services.obs_format import flatten_sinoptik_records
+        from backend.services.obs_fetcher import normalize_obs_records
+        p = Path(args.inspect_obs)
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        data = raw.get("data", raw) if isinstance(raw, dict) else raw
+        print(f"File: {p}")
+        print(f"Top type: {type(raw).__name__}, data len: {len(data) if isinstance(data, list) else 'n/a'}")
+        if isinstance(data, list) and data:
+            print(f"First item type: {type(data[0]).__name__}")
+            if isinstance(data[0], dict):
+                print(f"First keys: {list(data[0].keys())[:15]}")
+            elif isinstance(data[0], list):
+                print(f"First row len: {len(data[0])}, sample: {data[0][:5]}")
+        flat = flatten_sinoptik_records(raw)
+        df = normalize_obs_records(raw)
+        print(f"Flattened records: {len(flat)}")
+        print(f"DB rows: {len(df)}")
+        if flat and isinstance(flat[0], dict):
+            print(f"Flat[0] keys: {list(flat[0].keys())[:15]}")
+        return
 
     if args.test_api:
         asyncio.run(_run_test_api(date_from, date_to))

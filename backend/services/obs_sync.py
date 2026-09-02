@@ -127,6 +127,8 @@ def import_obs_from_json_dir(
         except (json.JSONDecodeError, OSError):
             continue
         records = raw if isinstance(raw, list) else raw.get("data", [])
+        from backend.services.obs_format import flatten_sinoptik_records
+        records = flatten_sinoptik_records(records)
         if not records:
             continue
         df = normalize_obs_records(records)
