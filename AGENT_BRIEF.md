@@ -34,7 +34,7 @@ Data model diverifikasi terhadap **observasi stasiun sinoptik BMKG** (format tit
 | litbangweb deploy | Awalnya direncanakan, **dibatalkan** — litbangweb **tidak punya akses internet** |
 | Cloud Agent | Tidak bisa akses `C:\Users\husei\...` — hanya VM Linux remote |
 | Opsi B (dipilih) | Develop & run di **PC BMKG lokal** + Cursor **Local Agent** |
-| Deploy produksi | Nanti di server **webpsi** (sama ekosistem psiidn) |
+| Deploy produksi | Server **PSIMKG** → `https://psimkg.bmkg.go.id/verifikasi-inanwp/` |
 
 ---
 
@@ -251,35 +251,17 @@ SFTP_PASSWORD=<isi di .env>
 
 ---
 
-## 11. Rencana Deploy webpsi (TODO)
+## 11. Deploy PSIMKG (portal sub-app)
 
-Pola mengikuti **psiidn** (litbangweb → webpsi via SFTP):
+| Item | Nilai |
+|------|-------|
+| Deploy path | `/var/www/verifikasi-inanwp` |
+| URL publik | https://psimkg.bmkg.go.id/verifikasi-inanwp/ |
+| Apache snippet | `deploy/apache-verifikasi-inanwp.conf` |
+| PM2 | `ecosystem.config.cjs` |
+| Panduan | `DEPLOY_PSIMKG.md`, `SETUP_LOCAL.md` |
 
-```
-litbangweb                          webpsi
-├── wrf/wrfout/*.nc  ──SFTP/rsync──►  /var/www/.../nwp-verify/data/nc/
-├── (hasil verifikasi?)              ├── backend + frontend
-└── psiidn_export (referensi)        └── nginx reverse proxy :443
-```
-
-### Task untuk Local Agent / fase deploy webpsi
-
-- [x] Script `deploy_webpsi.sh` — rsync/SFTP dari litbangweb + PM2 + Apache
-- [x] Apache config: proxy `/nwp-verify/api` → :8013, frontend → :3013
-- [x] Cron sync NC: `scripts/sync_nc_from_litbangweb.sh` (setiap 6 jam)
-- [x] Cron fetch observasi: `scripts/fetch_obs_cron.sh` + `POST /api/obs/sync-recent`
-- [x] Script test NC lokal: `scripts/test_nc_pipeline.py` (12GB lazy read)
-- [x] Integrasi observasi BMKG real ke pipeline (`sync_observations_for_init`)
-- [x] `SEED_DEMO_DATA=false` untuk produksi
-- [ ] Tentukan path deploy final di webpsi (koordinasi admin)
-- [ ] Mapping path model GFS/IFS/InaCAWO jika naming file berbeda
-- [ ] Auth/login dashboard jika diperlukan di webpsi publik
-
-### Referensi psiidn (litbangweb)
-- Export script: `/opt/lampp/htdocs/wrf/psiidn_export/`
-- Input NC: `/opt/lampp/htdocs/wrf/wrfout`
-- Output zip: `/opt/lampp/htdocs/wrf/psiidn_products/`
-- README psiidn menyebut rsync ke webpsi untuk climate data — gunakan pola yang sama
+Dev lokal dulu di PC BMKG → `git push` → `git pull` di server → `./deploy_psimkg.sh`
 
 ---
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Cron: fetch observasi BMKG Sinoptik (10 hari terakhir)
-# 0 */4 * * * /var/www/nwp-verify/scripts/fetch_obs_cron.sh
+# 0 */4 * * * /var/www/verifikasi-inanwp/scripts/fetch_obs_cron.sh
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 
 from backend.config import (
     API_PORT,
+    BASE_PATH,
+    CORS_ORIGIN,
     LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
     MODELS,
@@ -36,10 +38,17 @@ from backend.services.scheduler import start_scheduler
 from backend.services.sftp_client import get_server_model_inventory
 from backend.services.verification import compute_ranking
 
-app = FastAPI(title="NWP Verification API", version="2.0.0")
+app = FastAPI(
+    title="NWP Verification API",
+    version="2.0.0",
+    root_path=BASE_PATH if BASE_PATH else "",
+)
+_cors_origins = [CORS_ORIGIN, "http://localhost:3013", "http://127.0.0.1:3013"]
+if BASE_PATH:
+    _cors_origins.append(f"{CORS_ORIGIN}{BASE_PATH}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(dict.fromkeys(_cors_origins)),
     allow_methods=["*"],
     allow_headers=["*"],
 )

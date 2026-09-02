@@ -1,13 +1,18 @@
+const BASE_PATH = (() => {
+  const p = window.location.pathname;
+  if (p.startsWith('/verifikasi-inanwp')) return '/verifikasi-inanwp';
+  return '';
+})();
+
 const API = (() => {
-  const { hostname, pathname, port } = window.location;
+  const { hostname, port } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:8013';
   }
-  // webpsi Apache proxy: /nwp-verify → frontend, /nwp-verify/api → backend
-  if (pathname.startsWith('/nwp-verify')) {
-    return `${window.location.origin}/nwp-verify/api`;
+  // Portal PSIMKG: same-origin via Apache subpath
+  if (BASE_PATH) {
+    return `${window.location.origin}${BASE_PATH}/api`;
   }
-  // Direct port access (dev / litbangweb)
   return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
 })();
 

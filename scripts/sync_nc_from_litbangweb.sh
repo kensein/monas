@@ -1,8 +1,8 @@
 #!/bin/bash
-# Sync NC files dari litbangweb → webpsi (pola psiidn rsync/SFTP)
+# Sync NC files dari litbangweb → server PSIMKG
 #
 # Cron (setiap 6 jam):
-#   0 */6 * * * /var/www/nwp-verify/scripts/sync_nc_from_litbangweb.sh
+#   0 */6 * * * /var/www/verifikasi-inanwp/scripts/sync_nc_from_litbangweb.sh
 #
 # Env: baca dari .env di project root
 
