@@ -140,11 +140,10 @@
       ctx.fillStyle = '#e2e8f0';
       ctx.fillRect(0, 0, this.w, this.h);
 
-      const z = this.zoom;
+      const z = Math.max(3, Math.min(12, Math.round(this.zoom)));
       const c = this._centerWorld();
-      const scale = TILE * 2 ** z;
-      const tl = worldToLatLon(c.x - this.w / 2, c.y - this.h / 2, z);
-      const br = worldToLatLon(c.x + this.w / 2, c.y + this.h / 2, z);
+      const tl = worldToLatLon(c.x - this.w / 2, c.y - this.h / 2, this.zoom);
+      const br = worldToLatLon(c.x + this.w / 2, c.y + this.h / 2, this.zoom);
       const tMin = latLonToWorld(tl.lat, tl.lon, z);
       const tMax = latLonToWorld(br.lat, br.lon, z);
 
@@ -234,7 +233,7 @@
 
     _onWheel(e) {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.5 : 0.5;
+      const delta = e.deltaY > 0 ? -1 : 1;
       this.zoom = clamp(this.zoom + delta, 3, 12);
       this.draw();
     }
