@@ -97,6 +97,25 @@ def _filter_lead_indices(lead_times: list[int]) -> list[int]:
     return [i for i, lt in enumerate(lead_times) if 0 <= lt <= MAX_LEAD_TIME_HOURS]
 
 
+def _scalar_or_none(val: Any) -> float | None:
+    """Ambil satu float dari skalar atau array 0/1 elemen."""
+    arr = np.asarray(val).ravel()
+    if arr.size == 0:
+        return None
+    x = float(arr[0])
+    if np.isnan(x):
+        return None
+    return x
+
+
+def _ensure_2d_field(field: np.ndarray) -> np.ndarray:
+    """Turunkan ke 2D (lat, lon) — ambil level permukaan jika masih 3D+."""
+    field = np.squeeze(field)
+    while field.ndim > 2:
+        field = field[0]
+    return field
+
+
 def _interp_field(
     field: np.ndarray,
     lats: np.ndarray,
@@ -117,10 +136,8 @@ def _interp_field(
         return interp(pts)
 
     if field.ndim == 3:
-        results = []
-        for t in range(field.shape[0]):
-            results.append(_interp_field(field[t], lats, lons, station_lats, station_lons))
-        return np.array(results)
+        # Level vertikal (mis. bottom_top) — gunakan level permukaan
+        return _interp_field(field[0], lats, lons, station_lats, station_lons)
     raise ValueError(f"Unsupported field ndim: {field.ndim}")
 
 
@@ -138,11 +155,12 @@ def _interp_slice(
         field = da.isel({time_dim: t_idx})
         if hasattr(field, "load"):
             field = field.load()
-        field = field.values
+        field = _ensure_2d_field(np.asarray(field.values))
     else:
         field = da.values
         if field.ndim == 3:
             field = field[t_idx]
+        field = _ensure_2d_field(np.asarray(field))
     return _interp_field(field, lats, lons, station_lats, station_lons)
 
 
@@ -183,19 +201,21 @@ def _extract_wind_at_times(
             wd = (np.degrees(np.arctan2(-u_i, -v_i)) + 360) % 360
             for si in range(len(stations)):
                 st = stations.iloc[si]
-                if not np.isnan(ws[si]):
+                wsv = _scalar_or_none(ws[si])
+                if wsv is not None:
                     records.append({
                         "model": model, "station_id": st["station_id"],
                         "init_time": init_time.isoformat(), "lead_time": lt,
                         "valid_time": valid_time.isoformat(),
-                        "parameter": "wind_speed_ff", "fcst": float(ws[si]),
+                        "parameter": "wind_speed_ff", "fcst": wsv,
                     })
-                if not np.isnan(wd[si]):
+                wdv = _scalar_or_none(wd[si])
+                if wdv is not None:
                     records.append({
                         "model": model, "station_id": st["station_id"],
                         "init_time": init_time.isoformat(), "lead_time": lt,
                         "valid_time": valid_time.isoformat(),
-                        "parameter": "wind_dir_deg_dd", "fcst": float(wd[si]),
+                        "parameter": "wind_dir_deg_dd", "fcst": wdv,
                     })
         return records
 
@@ -212,19 +232,21 @@ def _extract_wind_at_times(
         wd_i = _interp_slice(wd_da, time_dim, li, lats, lons, st_lats, st_lons)
         for si in range(len(stations)):
             st = stations.iloc[si]
-            if not np.isnan(ws_i[si]):
+            wsv = _scalar_or_none(ws_i[si])
+            if wsv is not None:
                 records.append({
                     "model": model, "station_id": st["station_id"],
                     "init_time": init_time.isoformat(), "lead_time": lt,
                     "valid_time": valid_time.isoformat(),
-                    "parameter": "wind_speed_ff", "fcst": float(ws_i[si]),
+                    "parameter": "wind_speed_ff", "fcst": wsv,
                 })
-            if not np.isnan(wd_i[si]):
+            wdv = _scalar_or_none(wd_i[si])
+            if wdv is not None:
                 records.append({
                     "model": model, "station_id": st["station_id"],
                     "init_time": init_time.isoformat(), "lead_time": lt,
                     "valid_time": valid_time.isoformat(),
-                    "parameter": "wind_dir_deg_dd", "fcst": float(wd_i[si]),
+                    "parameter": "wind_dir_deg_dd", "fcst": wdv,
                 })
     return records
 
@@ -283,7 +305,7 @@ def read_point_forecast(
             interp = _kelvin_to_celsius(interp, var_name)
             for si in range(len(stations)):
                 st = stations.iloc[si]
-                val = float(interp[si]) if not np.isnan(interp[si]) else None
+                val = _scalar_or_none(interp[si])
                 if val is not None:
                     records.append({
                         "model": model,
