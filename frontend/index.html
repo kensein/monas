@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NWP Verification Dashboard — BMKG Litbang</title>
+  <title>NWP Verification Dashboard — PSIMKG BMKG</title>
+  <link rel="icon" href="assets/bmkg-logo.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,18 +12,17 @@
 </head>
 <body>
   <header>
-    <h1>🌐 NWP Verification Dashboard</h1>
-    <p>HARP Point Verification · InaNWP (real) · InaCAWO/GFS/IFS (dummy) · BMKG Sinoptik</p>
+    <div class="header-row">
+      <img src="assets/bmkg-logo.svg" alt="BMKG" class="logo" />
+      <div>
+        <h1>NWP Verification Dashboard</h1>
+        <p>HARP Point Verification | Pusat Standardisasi Instrumen MKG</p>
+      </div>
+    </div>
   </header>
 
   <div class="layout">
     <aside class="sidebar">
-      <section class="status-panel">
-        <h3>Status Pipeline</h3>
-        <div id="pipelineStatus" class="token-status">Memuat...</div>
-        <div id="dataSource" class="hint"></div>
-      </section>
-
       <section>
         <h3>Init Cycle (D-0)</h3>
         <select id="initCycle">
@@ -67,7 +67,7 @@
 
       <div id="scores" class="panel">
         <div id="scoreChart" class="chart"></div>
-        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail (RMSE, Bias, MAE, N).</div>
+        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail (RMSE, Bias, MAE, r, N).</div>
       </div>
 
       <div id="map" class="panel">
@@ -83,11 +83,17 @@
 
       <div id="station" class="panel">
         <select id="stationSelect"></select>
+        <p class="hint-chart">Garis = prakiraan model per init cycle · Titik kuning = observasi sinoptik · Area kosong = tidak ada pasangan fcst+obs</p>
         <div id="stationChart" class="chart"></div>
-        <div id="stationTable" class="detail-box"></div>
+        <div id="stationTable" class="detail-box">Tabel pasangan fcst vs obs per valid time.</div>
       </div>
     </main>
   </div>
+
+  <footer class="site-footer">
+    <span id="pipelineStatus">Memuat status pipeline...</span>
+    <span id="dataSource"></span>
+  </footer>
 
   <script src="app.js"></script>
 </body>

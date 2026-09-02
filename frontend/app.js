@@ -9,17 +9,33 @@ const API = (() => {
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:8013';
   }
-  // Portal PSIMKG: same-origin via Apache subpath
   if (BASE_PATH) {
     return `${window.location.origin}${BASE_PATH}/api`;
   }
   return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
 })();
 
+const MODEL_COLORS = {
+  Observasi: '#ca8a04',
+  InaNWP: '#ea580c',
+  InaCAWO: '#16a34a',
+  GFS: '#dc2626',
+  IFS: '#7c3aed',
+};
+
+const PLOT_LAYOUT = {
+  paper_bgcolor: '#ffffff',
+  plot_bgcolor: '#f8fafc',
+  font: { color: '#334155', family: 'Segoe UI, system-ui, sans-serif' },
+  xaxis: { gridcolor: '#e2e8f0', linecolor: '#cbd5e1' },
+  yaxis: { gridcolor: '#e2e8f0', linecolor: '#cbd5e1' },
+};
+
 let map, markers = [];
 let paramsMeta = {};
 let maxLeadTime = 168;
 let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy' };
+let cartoApiKey = '';
 
 async function api(path, opts = {}) {
   const res = await fetch(`${API}${path}`, opts);
@@ -36,11 +52,21 @@ function selectedInitTime() { return document.getElementById('initCycle').value 
 
 function formatLeadTime(h) {
   if (h === 0) return 'D+0 (analysis)';
-  if (h < 24) return `D+${(h/24).toFixed(1)} (${h} jam)`;
-  return `D+${(h/24).toFixed(1)} (${h} jam)`;
+  if (h < 24) return `D+${(h / 24).toFixed(1)} (${h} jam)`;
+  return `D+${(h / 24).toFixed(1)} (${h} jam)`;
+}
+
+async function loadPublicConfig() {
+  try {
+    const cfg = await api('/api/config/public');
+    cartoApiKey = cfg.carto_api_key || '';
+  } catch (e) {
+    console.warn('public config', e);
+  }
 }
 
 async function init() {
+  await loadPublicConfig();
   const data = await api('/api/parameters');
   paramsMeta = data.verify_parameters;
   maxLeadTime = data.max_lead_time_hours || 168;
@@ -62,7 +88,6 @@ async function init() {
   bindEvents();
   await refreshAll();
 
-  // Auto-refresh status setiap 5 menit
   setInterval(loadPipelineStatus, 300000);
 }
 
@@ -92,13 +117,15 @@ async function loadMethodology() {
     el.innerHTML = `
       <h2>${m.title}</h2>
       <p>${m.subtitle}</p>
+      <div class="note-box">${m.python_equivalence || ''}</div>
       <h3>Referensi HARP</h3>
       <div class="refs">${m.references.map(r =>
         `<a href="${r.url}" target="_blank" rel="noopener">${r.title}</a> — ${r.description}`
-      ).join('')}</div>
+      ).join('<br>')}</div>
       <h3>Alur kerja (harpPoint)</h3>
       <ol>${m.workflow.map(w => `<li><strong>${w.name}</strong> — ${w.detail}</li>`).join('')}</ol>
       <h3>Skor deterministik (det_verify)</h3>
+      <p>Semua skor dihitung <strong>paired</strong>: hanya pasangan (fcst, obs) yang lengkap setelah join & QC.</p>
       <table><tr><th>Skor</th><th>Formula</th><th>Catatan</th></tr>
       ${m.scores.map(s => `<tr><td>${s.id}</td><td><code>${s.formula}</code></td><td>${s.note}</td></tr>`).join('')}
       </table>
@@ -111,7 +138,7 @@ async function loadMethodology() {
         <li>Lead time: ${m.implementation.lead_time}</li>
       </ul>
       <h3>Sumber data model</h3>
-      <ul>${Object.entries(m.data_sources).map(([k,v]) => `<li><strong>${k}</strong>: ${v}</li>`).join('')}</ul>
+      <ul>${Object.entries(m.data_sources).map(([k, v]) => `<li><strong>${k}</strong>: ${v}</li>`).join('')}</ul>
     `;
   } catch (e) {
     el.textContent = 'Gagal memuat metode HARP: ' + e.message;
@@ -123,7 +150,7 @@ async function loadCycles() {
     const cycles = await api('/api/cycles');
     const sel = document.getElementById('initCycle');
     const opts = cycles.filter(c => c.status === 'done').map(c =>
-      `<option value="${c.init_time}">${c.model} · ${c.init_time?.slice(0,16)} · ${c.nc_filename || ''}</option>`
+      `<option value="${c.init_time}">${c.model} · ${c.init_time?.slice(0, 16)} · ${c.nc_filename || ''}</option>`
     );
     sel.innerHTML = '<option value="">Terbaru (semua cycle)</option>' + opts.join('');
   } catch (e) { console.warn('cycles', e); }
@@ -140,11 +167,9 @@ async function loadPipelineStatus() {
     const inanwp = inventory.InaNWP || {};
     const done = status.model_runs?.filter(r => r.status === 'done').length || 0;
     const pending = status.model_runs?.filter(r => r.status === 'pending').length || 0;
-    el.className = 'token-status ok';
-    el.innerHTML = `✓ Auto-sync aktif<br>${status.verification_scores_count} skor tersimpan<br>${done} run selesai · ${pending} pending`;
-    src.innerHTML = `Sumber NC: <code>${inanwp.path || 'litbangweb'}</code><br>${inanwp.count || 0} file NC · ${inanwp.local_access ? 'akses lokal ✓' : 'via SFTP'}`;
+    el.textContent = `Pipeline: ${status.verification_scores_count} skor · ${done} run selesai · ${pending} pending · auto-sync aktif`;
+    src.innerHTML = `NC: <code>${inanwp.path || 'litbangweb'}</code> · ${inanwp.count || 0} file`;
   } catch (e) {
-    el.className = 'token-status err';
     el.textContent = 'Pipeline: ' + e.message;
   }
 }
@@ -202,20 +227,23 @@ async function loadOverview() {
     </div>`).join('');
 
   Plotly.newPlot('rankingChart', [{
-    type: 'bar', x: ranking.ranking.map(r => r.model), y: ranking.ranking.map(r => r.mean_rmse),
-    marker: { color: ['#fbbf24','#94a3b8','#64748b','#475569'] },
-    text: ranking.ranking.map(r => `#${r.rank} RMSE ${r.mean_rmse?.toFixed(3)}`), textposition: 'auto',
+    type: 'bar',
+    x: ranking.ranking.map(r => r.model),
+    y: ranking.ranking.map(r => r.mean_rmse),
+    marker: { color: ['#00529B', '#64748b', '#94a3b8', '#cbd5e1'] },
+    text: ranking.ranking.map(r => `#${r.rank} RMSE ${r.mean_rmse?.toFixed(3)}`),
+    textposition: 'auto',
   }], {
-    title: '🏆 Ranking Model HARP — Mean RMSE (semakin kecil semakin baik)',
-    paper_bgcolor: '#1e293b', plot_bgcolor: '#1e293b', font: { color: '#e2e8f0' },
-    yaxis: { title: 'Mean RMSE' },
+    ...PLOT_LAYOUT,
+    title: 'Ranking Model HARP — Mean RMSE (semakin kecil semakin baik)',
+    yaxis: { ...PLOT_LAYOUT.yaxis, title: 'Mean RMSE' },
   }, { responsive: true });
 
   document.getElementById('kpiGrid').innerHTML = scores.scores.map(s => `
     <div class="kpi">
       <div class="label">${s.model} · ${formatLeadTime(s.lead_time)}</div>
       <div class="value">RMSE ${s.rmse?.toFixed(2)}</div>
-      <div class="label">Bias ${s.bias?.toFixed(2)} · MAE ${s.mae?.toFixed(2)} · N=${s.n_cases}</div>
+      <div class="label">Bias ${s.bias?.toFixed(2)} · MAE ${s.mae?.toFixed(2)} · stde ${s.stde?.toFixed(2)} · r ${s.correlation?.toFixed(2)} · N=${s.n_cases}</div>
     </div>`).join('');
 }
 
@@ -223,20 +251,25 @@ async function loadScores() {
   const param = document.getElementById('parameter').value;
   const data = await api(`/api/verification/scores?${scoresQuery()}`);
   const traces = selectedModels().map(m => {
-    const pts = data.scores.filter(s => s.model === m).sort((a,b) => a.lead_time - b.lead_time);
+    const pts = data.scores.filter(s => s.model === m).sort((a, b) => a.lead_time - b.lead_time);
     return {
-      name: m, x: pts.map(p => p.lead_time), y: pts.map(p => p.rmse),
-      mode: 'lines+markers', type: 'scatter', marker: { size: 8 },
-      customdata: pts.map(p => [p.bias, p.mae, p.n_cases, p.n_stations, p.correlation]),
-      hovertemplate: `${m}<br>%{x} jam (%{x}h)<br>RMSE: %{y:.3f}<br>Bias: %{customdata[0]:.3f}<extra></extra>`,
+      name: m,
+      x: pts.map(p => p.lead_time),
+      y: pts.map(p => p.rmse),
+      mode: 'lines+markers',
+      type: 'scatter',
+      line: { color: MODEL_COLORS[m] || '#00529B', width: 2 },
+      marker: { size: 7, color: MODEL_COLORS[m] },
+      customdata: pts.map(p => [p.bias, p.mae, p.n_cases, p.n_stations, p.correlation, p.stde]),
+      hovertemplate: `${m}<br>%{x} jam<br>RMSE: %{y:.3f}<br>Bias: %{customdata[0]:.3f}<extra></extra>`,
     };
   });
 
   Plotly.newPlot('scoreChart', traces, {
-    title: `RMSE vs Lead Time (D+0 → D+${maxLeadTime/24}) — ${paramsMeta[param]?.label}`,
-    paper_bgcolor: '#1e293b', plot_bgcolor: '#1e293b', font: { color: '#e2e8f0' },
-    xaxis: { title: 'Lead Time (jam)', dtick: 24 },
-    yaxis: { title: 'RMSE' },
+    ...PLOT_LAYOUT,
+    title: `RMSE vs Lead Time (D+0 → D+${maxLeadTime / 24}) — ${paramsMeta[param]?.label}`,
+    xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Lead Time (jam)', dtick: 24 },
+    yaxis: { ...PLOT_LAYOUT.yaxis, title: 'RMSE' },
   }, { responsive: true });
 
   document.getElementById('scoreChart').on('plotly_click', ev => {
@@ -244,30 +277,40 @@ async function loadScores() {
     document.getElementById('scoreDetail').innerHTML =
       `<strong>${pt.data.name}</strong> · ${formatLeadTime(pt.x)}<br>
        RMSE: <strong>${pt.y.toFixed(4)}</strong> · Bias: ${pt.customdata[0].toFixed(4)} ·
-       MAE: ${pt.customdata[1].toFixed(4)} · r: ${pt.customdata[4].toFixed(4)} · N: ${pt.customdata[2]}`;
+       MAE: ${pt.customdata[1].toFixed(4)} · stde: ${pt.customdata[5].toFixed(4)} ·
+       r: ${pt.customdata[4].toFixed(4)} · N: ${pt.customdata[2]}`;
   });
 }
 
 function initMap() {
   map = L.map('leafletMap').setView([-2.5, 118], 5);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© OSM © CARTO' }).addTo(map);
+  const keyParam = cartoApiKey ? `?api_key=${encodeURIComponent(cartoApiKey)}` : '';
+  L.tileLayer(
+    `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
+    { attribution: '© OSM © CARTO', subdomains: 'abcd', maxZoom: 19 },
+  ).addTo(map);
 }
 
 async function loadMap() {
+  if (!map) initMap();
   const lt = document.getElementById('leadTime').value;
   const param = document.getElementById('parameter').value;
   const model = selectedModels()[0] || 'InaNWP';
   const init = selectedInitTime();
   const q = `model=${model}&parameter=${param}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
   const data = await api(`/api/verification/map?${q}`);
-  markers.forEach(m => map.removeLayer(m)); markers = [];
-  if (!data.length) { document.getElementById('mapDetail').textContent = 'Belum ada data peta.'; return; }
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  if (!data.length) {
+    document.getElementById('mapDetail').textContent = 'Belum ada data peta untuk filter ini.';
+    return;
+  }
   const maxRmse = Math.max(...data.map(d => d.rmse || 0), 0.01);
   data.forEach(d => {
     if (!d.lat || !d.lon) return;
-    const color = d.rmse < maxRmse*0.33 ? '#4ade80' : d.rmse < maxRmse*0.66 ? '#fbbf24' : '#f87171';
+    const color = d.rmse < maxRmse * 0.33 ? '#16a34a' : d.rmse < maxRmse * 0.66 ? '#ca8a04' : '#dc2626';
     const m = L.circleMarker([d.lat, d.lon], { radius: 8, fillColor: color, color: '#fff', weight: 1, fillOpacity: 0.85 }).addTo(map);
-    m.bindPopup(`<b>${d.name||d.station_id}</b><br>RMSE: ${d.rmse?.toFixed(3)}`);
+    m.bindPopup(`<b>${d.name || d.station_id}</b><br>RMSE: ${d.rmse?.toFixed(3)}`);
     m.on('click', () => showStationMapDetail(d.station_id, param, init));
     markers.push(m);
   });
@@ -276,11 +319,12 @@ async function loadMap() {
 async function showStationMapDetail(stationId, param, init) {
   const q = `parameter=${param}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
   const data = await api(`/api/station/${stationId}/detail?${q}`);
-  const latest = data.series.filter(s => s.obs != null).slice(-1)[0] || {};
-  let html = `<strong>${data.station.name||stationId}</strong><table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>`;
+  const paired = data.series.filter(s => s.obs != null && selectedModels().some(m => s[m] != null));
+  const latest = paired.slice(-1)[0] || {};
+  let html = `<strong>${data.station.name || stationId}</strong><table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>`;
   selectedModels().forEach(m => {
-    const err = latest[m]!=null && latest.obs!=null ? (latest[m]-latest.obs).toFixed(3) : '—';
-    html += `<tr><td>${m}</td><td>${latest[m]?.toFixed(2)??'—'}</td><td>${latest.obs?.toFixed(2)??'—'}</td><td>${err}</td></tr>`;
+    const err = latest[m] != null && latest.obs != null ? (latest[m] - latest.obs).toFixed(3) : '—';
+    html += `<tr><td>${m}</td><td>${latest[m]?.toFixed(2) ?? '—'}</td><td>${latest.obs?.toFixed(2) ?? '—'}</td><td>${err}</td></tr>`;
   });
   document.getElementById('mapDetail').innerHTML = html + '</table>';
 }
@@ -288,14 +332,67 @@ async function showStationMapDetail(stationId, param, init) {
 async function loadStationDetail() {
   const stationId = document.getElementById('stationSelect').value;
   const init = selectedInitTime();
-  const q = `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
+  const param = document.getElementById('parameter').value;
+  const q = `parameter=${param}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
   const data = await api(`/api/station/${stationId}/detail?${q}`);
-  const traces = [{ name: 'Observasi', x: data.series.map(s=>s.valid_time), y: data.series.map(s=>s.obs), mode: 'markers', marker: { size: 8, color: '#fbbf24' } }];
-  selectedModels().forEach(m => traces.push({ name: m, x: data.series.map(s=>s.valid_time), y: data.series.map(s=>s[m]), mode: 'lines+markers', connectgaps: false }));
+
+  const traces = [{
+    name: 'Observasi',
+    x: data.series.map(s => s.valid_time),
+    y: data.series.map(s => s.obs),
+    mode: 'lines+markers',
+    line: { color: MODEL_COLORS.Observasi, width: 1, dash: 'dot' },
+    marker: { size: 6, color: MODEL_COLORS.Observasi },
+    connectgaps: false,
+  }];
+
+  selectedModels().forEach(m => {
+    const xs = [];
+    const ys = [];
+    data.series.forEach(s => {
+      if (s[m] != null) { xs.push(s.valid_time); ys.push(s[m]); }
+    });
+    traces.push({
+      name: m,
+      x: xs,
+      y: ys,
+      mode: 'lines+markers',
+      line: { color: MODEL_COLORS[m] || '#00529B', width: 2 },
+      marker: { size: 5 },
+      connectgaps: true,
+    });
+  });
+
   Plotly.newPlot('stationChart', traces, {
-    title: `${data.station.name||stationId} — ${paramsMeta[document.getElementById('parameter').value]?.label}`,
-    paper_bgcolor: '#1e293b', plot_bgcolor: '#1e293b', font: { color: '#e2e8f0' },
+    ...PLOT_LAYOUT,
+    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label}`,
+    xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Valid Time (UTC)' },
+    yaxis: { ...PLOT_LAYOUT.yaxis, title: paramsMeta[param]?.unit || '' },
+    legend: { orientation: 'h', y: -0.15 },
   }, { responsive: true });
+
+  const paired = data.series.filter(s =>
+    s.obs != null && selectedModels().some(m => s[m] != null)
+  ).slice(-20).reverse();
+
+  if (!paired.length) {
+    document.getElementById('stationTable').innerHTML =
+      '<em>Belum ada pasangan fcst+obs untuk stasiun/parameter/init cycle ini.</em>';
+    return;
+  }
+
+  let html = '<table><tr><th>Valid Time</th><th>Obs</th>';
+  selectedModels().forEach(m => { html += `<th>${m}</th><th>Err ${m}</th>`; });
+  html += '</tr>';
+  paired.forEach(s => {
+    html += `<tr><td>${s.valid_time?.slice(0, 16)}</td><td>${s.obs?.toFixed(2) ?? '—'}</td>`;
+    selectedModels().forEach(m => {
+      const err = s[m] != null && s.obs != null ? (s[m] - s.obs).toFixed(2) : '—';
+      html += `<td>${s[m]?.toFixed(2) ?? '—'}</td><td>${err}</td>`;
+    });
+    html += '</tr>';
+  });
+  document.getElementById('stationTable').innerHTML = html + '</table>';
 }
 
 init().catch(console.error);

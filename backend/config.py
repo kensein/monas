@@ -41,6 +41,7 @@ LOCAL_NC_PATH = os.getenv("LOCAL_NC_PATH", "").strip().strip('"').strip("'")
 
 # Katalog stasiun BMKG (WMO + lat/lon) — default: data/stations_bmkg.json
 STATION_CATALOG_PATH = os.getenv("STATION_CATALOG_PATH", "")
+CARTO_API_KEY = os.getenv("CARTO_API_KEY", os.getenv("NEXT_PUBLIC_CARTO_API_KEY", ""))
 NC_CHUNK_THRESHOLD_BYTES = int(os.getenv("NC_CHUNK_THRESHOLD_BYTES", str(500_000_000)))
 
 # BMKG Sinoptik API (v21)

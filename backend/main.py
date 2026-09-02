@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from backend.config import (
     API_PORT,
     BASE_PATH,
+    CARTO_API_KEY,
     CORS_ORIGIN,
     LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
@@ -183,6 +184,39 @@ def list_parameters() -> dict[str, Any]:
     }
 
 
+@app.get("/api/config/public")
+def public_config() -> dict[str, Any]:
+    """Konfigurasi publik untuk frontend (tanpa secret)."""
+    return {
+        "carto_api_key": CARTO_API_KEY,
+        "base_path": BASE_PATH,
+    }
+
+
+@app.get("/api/stations/coverage")
+def stations_coverage() -> dict[str, Any]:
+    """Cek stasiun observasi yang tidak match katalog WMO."""
+    from backend.services.station_catalog import catalog_coverage_report, load_station_catalog
+    from backend.services.obs_fetcher import get_db
+
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT station_id FROM observations"
+    ).fetchall()
+    conn.close()
+    # Ambil nama dari katalog + stations table
+    st = get_stations()
+    obs_ids = {r[0] for r in rows}
+    # Stasiun obs dengan ID hash (bukan 5 digit WMO)
+    hash_ids = [sid for sid in obs_ids if not (str(sid).isdigit() and len(str(sid)) == 5)]
+    return {
+        "catalog_size": len(load_station_catalog()),
+        "obs_station_ids": len(obs_ids),
+        "obs_unmatched_hash_ids": len(hash_ids),
+        "obs_unmatched_sample": hash_ids[:20],
+    }
+
+
 @app.get("/api/stations")
 def stations() -> list[dict]:
     return get_stations().to_dict(orient="records")
@@ -278,24 +312,32 @@ def station_detail(
     init_time: str | None = None,
 ) -> dict[str, Any]:
     from backend.services.obs_fetcher import load_forecasts
+    from backend.services.time_utils import normalize_valid_time
 
     model_list = [m.strip() for m in models.split(",") if m.strip()]
     obs_df = load_observations(parameters=[parameter])
-    obs_df = obs_df[obs_df["station_id"] == station_id].sort_values("valid_time")
+    obs_df = obs_df[obs_df["station_id"] == station_id].copy()
+    obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
     fcst_df = load_forecasts(models=model_list, parameters=[parameter])
     if init_time:
         fcst_df = fcst_df[fcst_df["init_time"] == init_time]
-    fcst_df = fcst_df[fcst_df["station_id"] == station_id].sort_values("valid_time")
+    fcst_df = fcst_df[fcst_df["station_id"] == station_id].copy()
+    fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
 
+    times = sorted(set(obs_df["valid_time"].dropna()) | set(fcst_df["valid_time"].dropna()))
     series = []
-    for _, row in obs_df.iterrows():
-        entry = {"valid_time": row["valid_time"], "obs": row["value"]}
+    for vt in times:
+        entry: dict[str, Any] = {"valid_time": vt}
+        obs_row = obs_df[obs_df["valid_time"] == vt]
+        if not obs_row.empty:
+            entry["obs"] = float(obs_row.iloc[0]["value"])
         for model in model_list:
-            match = fcst_df[(fcst_df["model"] == model) & (fcst_df["valid_time"] == row["valid_time"])]
+            match = fcst_df[(fcst_df["model"] == model) & (fcst_df["valid_time"] == vt)]
             if not match.empty:
                 entry[model] = float(match.iloc[0]["fcst"])
                 entry[f"{model}_lead"] = int(match.iloc[0]["lead_time"])
-        series.append(entry)
+        if "obs" in entry or any(m in entry for m in model_list):
+            series.append(entry)
 
     st = get_stations()
     info = st[st["station_id"] == station_id]

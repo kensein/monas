@@ -54,22 +54,78 @@ def _name_to_wmo_map() -> dict[str, str]:
     return out
 
 
+def _core_station_name(name: str) -> str:
+    """Nama inti stasiun tanpa prefix tipe UPT."""
+    s = _normalize_name(name)
+    prefixes = (
+        "stasiun meteorologi kelas i ",
+        "stasiun meteorologi kelas ii ",
+        "stasiun meteorologi kelas iii ",
+        "stasiun meteorologi kelas iv ",
+        "stasiun meteorologi ",
+        "stasiun klimatologi ",
+        "stasiun geofisika ",
+        "pos pengamatan meteorologi ",
+        "pos meteorologi ",
+    )
+    changed = True
+    while changed:
+        changed = False
+        for p in prefixes:
+            if s.startswith(p):
+                s = s[len(p):].strip()
+                changed = True
+    return s
+
+
+@lru_cache(maxsize=1)
+def _core_to_wmo_map() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for rec in load_station_catalog():
+        wmo = str(rec.get("wmo_id") or "").strip()
+        name = str(rec.get("name") or "").strip()
+        if not wmo or not name:
+            continue
+        core = _core_station_name(name)
+        if core and core not in out:
+            out[core] = wmo
+    return out
+
+
 def lookup_wmo_by_name(station_name: str) -> str | None:
-    """Resolve WMO ID dari nama stasiun (exact, case-insensitive)."""
+    """Resolve WMO ID dari nama stasiun (exact + fuzzy core name)."""
     key = _normalize_name(station_name)
     if not key:
         return None
     hit = _name_to_wmo_map().get(key)
     if hit:
         return hit
-    # Coba tanpa prefix redundan
-    for prefix in ("stasiun meteorologi ", "stasiun klimatologi ", "stasiun geofisika "):
-        if key.startswith(prefix):
-            short = key[len(prefix):]
-            for full, wmo in _name_to_wmo_map().items():
-                if full.endswith(short) or short in full:
+    core = _core_station_name(station_name)
+    if core:
+        hit = _core_to_wmo_map().get(core)
+        if hit:
+            return hit
+        if len(core) >= 4:
+            for cat_core, wmo in _core_to_wmo_map().items():
+                if core in cat_core or cat_core in core:
                     return wmo
     return None
+
+
+def catalog_coverage_report(obs_station_names: list[str]) -> dict[str, Any]:
+    """Laporan stasiun obs yang tidak match katalog."""
+    matched, unmatched = [], []
+    for name in obs_station_names:
+        if lookup_wmo_by_name(name):
+            matched.append(name)
+        else:
+            unmatched.append(name)
+    return {
+        "total": len(obs_station_names),
+        "matched": len(matched),
+        "unmatched": len(unmatched),
+        "unmatched_names": sorted(set(unmatched))[:50],
+    }
 
 
 def catalog_to_dataframe() -> pd.DataFrame:
@@ -143,4 +199,5 @@ def invalidate_catalog_cache() -> None:
     global _catalog_db_synced
     load_station_catalog.cache_clear()
     _name_to_wmo_map.cache_clear()
+    _core_to_wmo_map.cache_clear()
     _catalog_db_synced = False

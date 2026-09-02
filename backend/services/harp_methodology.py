@@ -21,21 +21,32 @@ HARP_REFERENCES = [
 HARP_WORKFLOW = [
     {"step": 1, "name": "Read FCST", "detail": "Baca NetCDF model (harpIO read_forecast), interpolasi grid → titik stasiun sinoptik."},
     {"step": 2, "name": "Read OBS", "detail": "Observasi sinoptik BMKG (POST export API v21), format titik per stasiun & valid time."},
-    {"step": 3, "name": "Join", "detail": "Gabungkan fcst & obs pada station_id + valid_time (inner join, harpPoint join_to_fcst)."},
+    {"step": 3, "name": "Join", "detail": "Gabungkan fcst & obs pada station_id + valid_time (inner join, harpPoint join_to_fcst). Hanya pasangan lengkap yang dipakai."},
     {"step": 4, "name": "QC", "detail": "Buang outlier jika |error| > 4σ (check_obs_against_fcst)."},
-    {"step": 5, "name": "det_verify", "detail": "Hitung skor deterministik per parameter & lead time."},
-    {"step": 6, "name": "common_cases", "detail": "Perbandingan adil: hanya kasus yang ada di semua model (ranking)."},
+    {"step": 5, "name": "det_verify", "detail": "Hitung skor deterministik per parameter & lead time (paired: fcst & obs harus ada)."},
+    {"step": 6, "name": "common_cases", "detail": "Perbandingan adil antar model: hanya kasus yang ada di semua model (ranking)."},
 ]
 
 HARP_SCORES = [
     {"id": "bias", "formula": "mean(fcst − obs)", "note": "Positive = model terlalu tinggi"},
     {"id": "rmse", "formula": "√mean((fcst − obs)²)", "note": "Metrik utama ranking"},
     {"id": "mae", "formula": "mean(|fcst − obs|)", "note": "Rata-rata absolute error"},
-    {"id": "stde", "formula": "std(fcst − obs)", "note": "Spread error"},
-    {"id": "correlation", "formula": "Pearson(fcst, obs)", "note": "Korelasi linear"},
+    {"id": "stde", "formula": "std(fcst − obs, ddof=1)", "note": "Spread error — bagian det_verify harpPoint"},
+    {"id": "correlation", "formula": "Pearson(fcst, obs)", "note": "Korelasi linear — bagian det_verify harpPoint"},
 ]
 
-HARP_QC = "Outlier dibuang jika |e| > 4σ. Arah angin: error melingkar (circular). Lead time D+0 (analysis) s/d D+7 (168 jam)."
+HARP_QC = (
+    "Outlier dibuang jika |e| > 4σ. Arah angin: error melingkar (circular). "
+    "Lead time D+0 (analysis) s/d D+7 (168 jam). "
+    "Perhitungan paired: jika fcst atau obs hilang untuk (station, valid_time), baris itu tidak masuk skor."
+)
+
+HARP_PYTHON_NOTE = (
+    "HARP resmi ditulis dalam R (harpPoint, harpIO). MONAS mengimplementasikan alur yang sama "
+    "dalam Python: baca NetCDF → interpolasi scipy → SQLite → join paired → det_verify. "
+    "Output skor (bias, RMSE, MAE, stde, correlation) setara harpPoint; format penyimpanan SQLite "
+    "menggantikan workflow R→SQLite yang dipakai di lingkungan litbangweb."
+)
 
 
 def get_methodology() -> dict:
@@ -46,6 +57,7 @@ def get_methodology() -> dict:
         "workflow": HARP_WORKFLOW,
         "scores": HARP_SCORES,
         "qc": HARP_QC,
+        "python_equivalence": HARP_PYTHON_NOTE,
         "implementation": {
             "interpolation": "RegularGridInterpolator (Python/scipy) — setara harpIO transformation=interpolate",
             "verification": "backend/services/verification.py — det_verify, common_cases, compute_ranking",
