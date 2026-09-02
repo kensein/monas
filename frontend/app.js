@@ -297,21 +297,6 @@ function initMap() {
   ).addTo(map);
 }
 
-function refreshMapTiles() {
-  if (!map) return;
-  if (mapTileLayer) map.removeLayer(mapTileLayer);
-  const keyParam = cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : '';
-  mapTileLayer = L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
-    {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19,
-    },
-  ).addTo(map);
-  setTimeout(() => map.invalidateSize(), 0);
-}
-
 async function loadMap() {
   if (!map) initMap();
   else setTimeout(() => map.invalidateSize(), 0);
