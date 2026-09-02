@@ -264,15 +264,16 @@ litbangweb                          webpsi
 
 ### Task untuk Local Agent / fase deploy webpsi
 
-- [ ] Tentukan path deploy di webpsi (koordinasi dengan admin webpsi)
-- [ ] Script `deploy_webpsi.sh` — rsync/SFTP dari litbangweb + systemd service
-- [ ] Nginx config: proxy `/api` → :8013, static frontend → :3013 atau serve static
-- [ ] Cron di litbangweb atau webpsi: pull NC baru dari wrfout tiap cycle model
-- [ ] Cron fetch observasi BMKG (POST API) — webpsi punya internet/intranet?
-- [ ] Mapping path model GFS/IFS/InaCAWO jika naming file berbeda dari InaNWP
-- [ ] Hapus/demo data seed di produksi (`generate_demo_data` hanya dev)
+- [x] Script `deploy_webpsi.sh` — rsync/SFTP dari litbangweb + PM2 + Apache
+- [x] Apache config: proxy `/nwp-verify/api` → :8013, frontend → :3013
+- [x] Cron sync NC: `scripts/sync_nc_from_litbangweb.sh` (setiap 6 jam)
+- [x] Cron fetch observasi: `scripts/fetch_obs_cron.sh` + `POST /api/obs/sync-recent`
+- [x] Script test NC lokal: `scripts/test_nc_pipeline.py` (12GB lazy read)
+- [x] Integrasi observasi BMKG real ke pipeline (`sync_observations_for_init`)
+- [x] `SEED_DEMO_DATA=false` untuk produksi
+- [ ] Tentukan path deploy final di webpsi (koordinasi admin)
+- [ ] Mapping path model GFS/IFS/InaCAWO jika naming file berbeda
 - [ ] Auth/login dashboard jika diperlukan di webpsi publik
-- [ ] Optimasi NC 12GB: lazy read xarray chunks, jangan duplicate file
 
 ### Referensi psiidn (litbangweb)
 - Export script: `/opt/lampp/htdocs/wrf/psiidn_export/`
@@ -294,12 +295,12 @@ litbangweb                          webpsi
 - SQLite cache obs + verification scores
 
 ### ⏳ Belum / Perlu Local Agent
-- Test end-to-end dengan NC 12GB asli di PC lokal
-- Test BMKG API dari intranet BMKG (login psimkg)
-- Deploy script & nginx untuk **webpsi**
-- Sync otomatis NC litbangweb → webpsi
-- Model InaCAWO, GFS, IFS — pastikan file NC & naming ada di wrfout
-- Production hardening (no demo seed, logging, auth)
+- [ ] Test end-to-end dengan NC 12GB asli di PC lokal (`scripts/test_nc_pipeline.py --full`)
+- [ ] Test BMKG API dari intranet BMKG (login psimkg)
+- [x] Deploy script Apache + PM2 untuk **webpsi**
+- [x] Sync otomatis NC litbangweb → webpsi (script + cron)
+- [ ] Model InaCAWO, GFS, IFS — pastikan file NC & naming ada di wrfout
+- [ ] Production hardening (logging, auth)
 
 ---
 

@@ -197,6 +197,49 @@ Atau buka: http://localhost:8013/docs → `POST /api/pipeline/run`
 
 ---
 
+## Langkah 9 — Test pipeline NC 12GB (tanpa full dashboard)
+
+Set `LOCAL_NC_PATH` di `.env` ke file NC Anda, lalu:
+
+```cmd
+cd C:\Users\husei\Projects\monas
+
+REM 1. Inspect variabel NC saja (cepat)
+python scripts\test_nc_pipeline.py --inspect
+
+REM 2. Baca NC → interpolasi stasiun (10–30 menit untuk 12GB)
+python scripts\test_nc_pipeline.py --ingest-only
+
+REM 3. Pipeline lengkap: NC + fetch observasi BMKG + HARP D+0–D+7
+python scripts\test_nc_pipeline.py --full
+```
+
+Opsi tambahan:
+- `--nc-path "C:\path\to\file.nc"` — override `LOCAL_NC_PATH`
+- `--no-fetch-obs` — skip BMKG API (gunakan obs yang sudah di cache)
+- `--model InaNWP` — pilih model (default InaNWP)
+
+Set `SEED_DEMO_DATA=false` di `.env` agar tidak pakai data demo saat NC asli tersedia.
+
+---
+
+## Langkah 10 — Deploy webpsi (produksi)
+
+```bash
+chmod +x deploy_webpsi.sh scripts/*.sh
+./deploy_webpsi.sh
+```
+
+Script deploy akan:
+1. Rsync aplikasi ke `/var/www/nwp-verify`
+2. Setup Python venv + PM2 (`ecosystem.config.js`)
+3. Apache reverse proxy (`deploy/apache-nwp-verify.conf`)
+4. Cron sync NC dari litbangweb setiap 6 jam
+
+Dashboard produksi: `https://webpsi.bmkg.go.id/nwp-verify/`
+
+---
+
 ## Troubleshooting
 
 ### Dashboard kosong / "Belum ada skor"

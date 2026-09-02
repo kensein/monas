@@ -11,7 +11,7 @@ import pandas as pd
 import xarray as xr
 from scipy.interpolate import RegularGridInterpolator
 
-from backend.config import MODEL_VAR_MAP
+from backend.config import MAX_LEAD_TIME_HOURS, MODEL_VAR_MAP, NC_CHUNK_THRESHOLD_BYTES
 
 
 def parse_init_time(filename: str) -> datetime | None:
@@ -56,31 +56,45 @@ def _get_coords(ds: xr.Dataset) -> tuple[np.ndarray, np.ndarray]:
     return lat, lon
 
 
-def _get_times(ds: xr.Dataset) -> list[datetime]:
+def _get_time_dim(ds: xr.Dataset) -> str | None:
     for tname in ["Time", "time", "Times"]:
         if tname in ds.coords or tname in ds.dims:
-            times = ds[tname].values
-            result = []
-            for t in times:
-                if isinstance(t, np.datetime64):
-                    result.append(pd.Timestamp(t).to_pydatetime())
-                else:
-                    try:
-                        result.append(datetime.utcfromtimestamp(float(t)))
-                    except Exception:
-                        result.append(parse_init_time(str(t)) or datetime.utcnow())
-            return result
-    return []
-
-
-def _get_lead_times(ds: xr.Dataset, init_time: datetime) -> list[int]:
-    times = _get_times(ds)
-    if times:
-        return [int((t - init_time).total_seconds() / 3600) for t in times]
+            return tname
     for dim in ds.dims:
-        if "time" in dim.lower() or dim == "Time":
-            return list(range(ds.dims[dim]))
+        if "time" in dim.lower():
+            return dim
+    return None
+
+
+def _get_times(ds: xr.Dataset, time_dim: str | None, init_time: datetime) -> list[datetime]:
+    if not time_dim:
+        return [init_time]
+    times = ds[time_dim].values
+    result = []
+    for t in times:
+        if isinstance(t, np.datetime64):
+            result.append(pd.Timestamp(t).to_pydatetime())
+        else:
+            try:
+                result.append(datetime.utcfromtimestamp(float(t)))
+            except Exception:
+                parsed = parse_init_time(str(t))
+                result.append(parsed or init_time)
+    return result
+
+
+def _get_lead_times(ds: xr.Dataset, init_time: datetime, time_dim: str | None) -> list[int]:
+    times = _get_times(ds, time_dim, init_time)
+    if times and len(times) > 1:
+        return [int((t - init_time).total_seconds() / 3600) for t in times]
+    if time_dim and time_dim in ds.dims:
+        return list(range(ds.dims[time_dim]))
     return [0]
+
+
+def _filter_lead_indices(lead_times: list[int]) -> list[int]:
+    """Keep only D+0 through D+7 (0–168 h)."""
+    return [i for i, lt in enumerate(lead_times) if 0 <= lt <= MAX_LEAD_TIME_HOURS]
 
 
 def _interp_field(
@@ -110,35 +124,109 @@ def _interp_field(
     raise ValueError(f"Unsupported field ndim: {field.ndim}")
 
 
-def _extract_wind(ds: xr.Dataset, model: str, stations: pd.DataFrame) -> tuple[np.ndarray | None, np.ndarray | None]:
-    u_names = ["U10", "u10", "10u"]
-    v_names = ["V10", "v10", "10v"]
-    u_var = _find_var(ds, u_names)
-    v_var = _find_var(ds, v_names)
-    if not u_var or not v_var:
-        ws_var = _find_var(ds, MODEL_VAR_MAP.get(model, {}).get("wind_speed_ff", ["WS10", "ws10"]))
-        wd_var = _find_var(ds, MODEL_VAR_MAP.get(model, {}).get("wind_dir_deg_dd", ["WD10", "wd10"]))
-        if ws_var and wd_var:
-            lats, lons = _get_coords(ds)
-            ws = _interp_field(ds[ws_var].values, lats, lons, stations["lat"].values, stations["lon"].values)
-            wd = _interp_field(ds[wd_var].values, lats, lons, stations["lat"].values, stations["lon"].values)
-            return ws, wd
-        return None, None
-
-    lats, lons = _get_coords(ds)
-    u = ds[u_var].values
-    v = ds[v_var].values
-    u_i = _interp_field(u, lats, lons, stations["lat"].values, stations["lon"].values)
-    v_i = _interp_field(v, lats, lons, stations["lat"].values, stations["lon"].values)
-    ws = np.sqrt(u_i ** 2 + v_i ** 2)
-    wd = (np.degrees(np.arctan2(-u_i, -v_i)) + 360) % 360
-    return ws, wd
+def _interp_slice(
+    da: xr.DataArray,
+    time_dim: str | None,
+    t_idx: int,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    station_lats: np.ndarray,
+    station_lons: np.ndarray,
+) -> np.ndarray:
+    """Load one time slice and interpolate to stations (memory-safe for large NC)."""
+    if time_dim and time_dim in da.dims:
+        field = da.isel({time_dim: t_idx})
+        if hasattr(field, "load"):
+            field = field.load()
+        field = field.values
+    else:
+        field = da.values
+        if field.ndim == 3:
+            field = field[t_idx]
+    return _interp_field(field, lats, lons, station_lats, station_lons)
 
 
 def _kelvin_to_celsius(val: np.ndarray, var_name: str) -> np.ndarray:
     if var_name.upper().startswith("T") and np.nanmean(val) > 150:
         return val - 273.15
     return val
+
+
+def _extract_wind_at_times(
+    ds: xr.Dataset,
+    model: str,
+    stations: pd.DataFrame,
+    lats: np.ndarray,
+    lons: np.ndarray,
+    time_dim: str | None,
+    lead_indices: list[int],
+    lead_times: list[int],
+    init_time: datetime,
+) -> list[dict[str, Any]]:
+    """Extract wind speed/direction per time slice without loading full 3D arrays."""
+    u_names = ["U10", "u10", "10u"]
+    v_names = ["V10", "v10", "10v"]
+    u_var = _find_var(ds, u_names)
+    v_var = _find_var(ds, v_names)
+    records: list[dict[str, Any]] = []
+    st_lats = stations["lat"].values
+    st_lons = stations["lon"].values
+
+    if u_var and v_var:
+        u_da, v_da = ds[u_var], ds[v_var]
+        for li in lead_indices:
+            lt = lead_times[li]
+            valid_time = init_time + timedelta(hours=lt)
+            u_i = _interp_slice(u_da, time_dim, li, lats, lons, st_lats, st_lons)
+            v_i = _interp_slice(v_da, time_dim, li, lats, lons, st_lats, st_lons)
+            ws = np.sqrt(u_i ** 2 + v_i ** 2)
+            wd = (np.degrees(np.arctan2(-u_i, -v_i)) + 360) % 360
+            for si in range(len(stations)):
+                st = stations.iloc[si]
+                if not np.isnan(ws[si]):
+                    records.append({
+                        "model": model, "station_id": st["station_id"],
+                        "init_time": init_time.isoformat(), "lead_time": lt,
+                        "valid_time": valid_time.isoformat(),
+                        "parameter": "wind_speed_ff", "fcst": float(ws[si]),
+                    })
+                if not np.isnan(wd[si]):
+                    records.append({
+                        "model": model, "station_id": st["station_id"],
+                        "init_time": init_time.isoformat(), "lead_time": lt,
+                        "valid_time": valid_time.isoformat(),
+                        "parameter": "wind_dir_deg_dd", "fcst": float(wd[si]),
+                    })
+        return records
+
+    ws_var = _find_var(ds, MODEL_VAR_MAP.get(model, {}).get("wind_speed_ff", ["WS10", "ws10"]))
+    wd_var = _find_var(ds, MODEL_VAR_MAP.get(model, {}).get("wind_dir_deg_dd", ["WD10", "wd10"]))
+    if not ws_var or not wd_var:
+        return records
+
+    ws_da, wd_da = ds[ws_var], ds[wd_var]
+    for li in lead_indices:
+        lt = lead_times[li]
+        valid_time = init_time + timedelta(hours=lt)
+        ws_i = _interp_slice(ws_da, time_dim, li, lats, lons, st_lats, st_lons)
+        wd_i = _interp_slice(wd_da, time_dim, li, lats, lons, st_lats, st_lons)
+        for si in range(len(stations)):
+            st = stations.iloc[si]
+            if not np.isnan(ws_i[si]):
+                records.append({
+                    "model": model, "station_id": st["station_id"],
+                    "init_time": init_time.isoformat(), "lead_time": lt,
+                    "valid_time": valid_time.isoformat(),
+                    "parameter": "wind_speed_ff", "fcst": float(ws_i[si]),
+                })
+            if not np.isnan(wd_i[si]):
+                records.append({
+                    "model": model, "station_id": st["station_id"],
+                    "init_time": init_time.isoformat(), "lead_time": lt,
+                    "valid_time": valid_time.isoformat(),
+                    "parameter": "wind_dir_deg_dd", "fcst": float(wd_i[si]),
+                })
+    return records
 
 
 def read_point_forecast(
@@ -148,18 +236,26 @@ def read_point_forecast(
     parameters: list[str],
     init_time: datetime | None = None,
 ) -> pd.DataFrame:
-    """Extract point forecasts from NetCDF for given stations."""
+    """Extract point forecasts from NetCDF for given stations (lazy read for 12GB+)."""
     init_time = init_time or parse_init_time(nc_path.name)
     if init_time is None:
         init_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
 
-    use_chunks = nc_path.stat().st_size > 500_000_000
-    ds = xr.open_dataset(nc_path, chunks={"Time": 1} if use_chunks else None)
+    use_chunks = nc_path.stat().st_size > NC_CHUNK_THRESHOLD_BYTES
+    chunk_kw: dict[str, Any] = {}
+    if use_chunks:
+        chunk_kw["chunks"] = "auto"
+
+    ds = xr.open_dataset(nc_path, **chunk_kw)
     lats, lons = _get_coords(ds)
-    lead_times = _get_lead_times(ds, init_time)
+    time_dim = _get_time_dim(ds)
+    lead_times = _get_lead_times(ds, init_time, time_dim)
+    lead_indices = _filter_lead_indices(lead_times)
     var_map = MODEL_VAR_MAP.get(model, MODEL_VAR_MAP["InaNWP"])
 
     records: list[dict[str, Any]] = []
+    st_lats = stations["lat"].values
+    st_lons = stations["lon"].values
 
     for param in parameters:
         if param in ("wind_speed_ff", "wind_dir_deg_dd"):
@@ -170,17 +266,15 @@ def read_point_forecast(
         if not var_name:
             continue
 
-        field = ds[var_name].values
-        interp = _interp_field(field, lats, lons, stations["lat"].values, stations["lon"].values)
-        interp = _kelvin_to_celsius(interp, var_name)
-
-        if interp.ndim == 1:
-            interp = interp.reshape(1, -1)
-
-        for li, lt in enumerate(lead_times[: interp.shape[0]]):
+        da = ds[var_name]
+        for li in lead_indices:
+            lt = lead_times[li]
             valid_time = init_time + timedelta(hours=lt)
-            for si, st in stations.iterrows():
-                val = float(interp[li, si]) if not np.isnan(interp[li, si]) else None
+            interp = _interp_slice(da, time_dim, li, lats, lons, st_lats, st_lons)
+            interp = _kelvin_to_celsius(interp, var_name)
+            for si in range(len(stations)):
+                st = stations.iloc[si]
+                val = float(interp[si]) if not np.isnan(interp[si]) else None
                 if val is not None:
                     records.append({
                         "model": model,
@@ -192,28 +286,9 @@ def read_point_forecast(
                         "fcst": val,
                     })
 
-    # Wind from U/V
-    ws, wd = _extract_wind(ds, model, stations)
-    if ws is not None:
-        for li, lt in enumerate(lead_times[: ws.shape[0] if ws.ndim > 1 else 1]):
-            valid_time = init_time + timedelta(hours=lt)
-            for si, st in stations.iterrows():
-                wsi = float(ws[li, si] if ws.ndim > 1 else ws[si])
-                wdi = float(wd[li, si] if wd.ndim > 1 else wd[si])
-                if not np.isnan(wsi):
-                    records.append({
-                        "model": model, "station_id": st["station_id"],
-                        "init_time": init_time.isoformat(), "lead_time": lt,
-                        "valid_time": valid_time.isoformat(),
-                        "parameter": "wind_speed_ff", "fcst": wsi,
-                    })
-                if not np.isnan(wdi):
-                    records.append({
-                        "model": model, "station_id": st["station_id"],
-                        "init_time": init_time.isoformat(), "lead_time": lt,
-                        "valid_time": valid_time.isoformat(),
-                        "parameter": "wind_dir_deg_dd", "fcst": wdi,
-                    })
+    records.extend(_extract_wind_at_times(
+        ds, model, stations, lats, lons, time_dim, lead_indices, lead_times, init_time,
+    ))
 
     ds.close()
     return pd.DataFrame(records)
@@ -221,11 +296,20 @@ def read_point_forecast(
 
 def inspect_nc(nc_path: Path) -> dict[str, Any]:
     ds = xr.open_dataset(nc_path, decode_times=False)
+    init = parse_init_time(nc_path.name)
+    time_dim = _get_time_dim(ds)
+    lead_times = _get_lead_times(ds, init or datetime.utcnow(), time_dim) if init else []
     info = {
         "variables": list(ds.data_vars),
-        "dims": dict(ds.dims),
+        "dims": dict(ds.sizes),
         "coords": list(ds.coords),
-        "init_time": parse_init_time(nc_path.name).isoformat() if parse_init_time(nc_path.name) else None,
+        "time_dim": time_dim,
+        "init_time": init.isoformat() if init else None,
+        "lead_times_hours": lead_times[:20],
+        "lead_time_count": len(lead_times),
+        "lead_time_max_hours": max(lead_times) if lead_times else 0,
+        "size_gb": round(nc_path.stat().st_size / 1e9, 2),
+        "chunked_read": nc_path.stat().st_size > NC_CHUNK_THRESHOLD_BYTES,
     }
     ds.close()
     return info

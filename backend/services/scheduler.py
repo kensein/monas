@@ -1,23 +1,26 @@
 """Background scheduler for auto pipeline on litbangweb."""
 from __future__ import annotations
 
-import asyncio
+import os
 import threading
 import time
-from datetime import datetime
 
 from backend.config import PIPELINE_INTERVAL_SEC
+from backend.services.obs_fetcher import sync_observations_recent
 from backend.services.pipeline import init_pipeline_db, run_full_pipeline
 
 
 _scheduler_thread: threading.Thread | None = None
 _running = False
+_obs_sync_enabled = os.getenv("AUTO_SYNC_OBS", "true").lower() in ("1", "true", "yes")
 
 
 def _scheduler_loop() -> None:
     global _running
     while _running:
         try:
+            if _obs_sync_enabled:
+                sync_observations_recent(days=10)
             run_full_pipeline()
         except Exception as e:
             print(f"[pipeline] error: {e}")

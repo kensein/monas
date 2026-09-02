@@ -20,6 +20,15 @@ for d in (NC_DIR, OBS_DIR, CACHE_DIR):
 API_PORT = int(os.getenv("API_PORT", "8013"))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "3013"))
 
+# Production vs dev: set SEED_DEMO_DATA=false on webpsi / local with real NC
+SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "true").lower() in ("1", "true", "yes")
+
+# Single NC file override (Opsi B: C:\Users\...\2026070112-d01-asim.nc)
+LOCAL_NC_PATH = os.getenv("LOCAL_NC_PATH", "").strip().strip('"').strip("'")
+
+# Large-file threshold for chunked xarray reads (bytes)
+NC_CHUNK_THRESHOLD_BYTES = int(os.getenv("NC_CHUNK_THRESHOLD_BYTES", str(500_000_000)))
+
 # BMKG Sinoptik API (v21)
 BMKG_API_BASE = os.getenv("BMKG_API_BASE", "https://bmkgsatu.bmkg.go.id")
 BMKG_USERNAME = os.getenv("BMKG_USERNAME", "")
