@@ -137,6 +137,8 @@ async function loadMethodology() {
       <table><tr><th>Konteks</th><th>Skor skill</th><th>Catatan</th></tr>
       ${(m.skill_scores || []).map(s => `<tr><td>${s.context}</td><td><code>${s.scores}</code></td><td>${s.note}</td></tr>`).join('')}
       </table>
+      <h3>Cache &amp; pipeline (pola PSIIDN)</h3>
+      <p>${m.cache || ''}</p>
       <h3>Implementasi MONAS</h3>
       <ul>
         <li>Interpolasi: ${m.implementation.interpolation}</li>
@@ -229,7 +231,6 @@ async function loadOverview() {
       <div class="model-name">${r.model} ${modelBadge(r.model)}</div>
       <div class="metric">Mean RMSE: <strong>${r.mean_rmse?.toFixed(3)}</strong> · MAE: ${r.mean_mae?.toFixed(3)}</div>
       <div class="metric">Bias: ${r.mean_bias?.toFixed(3)} · stde: ${r.mean_stde?.toFixed(3)} · r: ${r.mean_correlation?.toFixed(3)}</div>
-      <div class="metric muted">Skor HARP det_summary (mean lintas param × lead time)</div>
     </div>`).join('');
 
   Plotly.newPlot('rankingChart', [{

@@ -11,9 +11,9 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from backend.config import DUMMY_MODELS, MAX_LEAD_TIME_HOURS, VERIFY_PARAMETERS
+from backend.config import DUMMY_MODELS, MAX_LEAD_TIME_HOURS
 from backend.services.obs_fetcher import get_db, load_forecasts, save_forecasts
-from backend.services.verification import build_verification_pairs, det_verify
+from backend.services.verification_cache import compute_run_verification, refresh_ranking_cache, save_verification_station_scores
 
 # save_verification_scores imported lazily to avoid circular import with pipeline
 
@@ -91,28 +91,18 @@ def verify_dummy_models(
     if obs_df.empty:
         return {"error": "Observasi kosong", **gen}
 
-    all_scores = []
+    all_scores: list[dict] = []
+    all_station_rows: list[dict] = []
     for model in targets:
         if progress_cb:
             progress_cb(80, f"Verifikasi dummy {model}...")
-        for param, meta in VERIFY_PARAMETERS.items():
-            circular = meta.get("category") == "circular"
-            param_obs = obs_df[obs_df["parameter"] == param]
-            if param_obs.empty:
-                continue
-            fcst_df = load_forecasts(models=[model], parameters=[param])
-            fcst_df = fcst_df[fcst_df["init_time"] == init_time]
-            fcst_df = fcst_df[fcst_df["lead_time"] <= MAX_LEAD_TIME_HOURS]
-            for lt in sorted(fcst_df["lead_time"].unique()):
-                lt_fcst = fcst_df[fcst_df["lead_time"] == lt]
-                pairs = build_verification_pairs(param_obs, lt_fcst, param, circular=circular)
-                vr = det_verify(pairs, param, model, int(lt), circular=circular)
-                if vr:
-                    d = vr.to_dict()
-                    d["init_time"] = init_time
-                    all_scores.append(d)
+        scores, station_rows = compute_run_verification(model, init_time, obs_df)
+        all_scores.extend(scores)
+        all_station_rows.extend(station_rows)
 
     saved = save_verification_scores(all_scores)
+    save_verification_station_scores(all_station_rows)
+    refresh_ranking_cache()
 
     conn = get_db()
     ts = datetime.utcnow().isoformat()

@@ -36,11 +36,13 @@ HARP_SCORES = [
 ]
 
 HARP_RANKING = (
-    "Ranking model (tab Overview) mengikuti harpPoint det_verify() untuk variabel kontinu (thresholds=NULL): "
-    "hanya det_summary_scores — bias, RMSE, MAE, stde — yang diagregasi. MONAS menambahkan mean korelasi "
-    "(Pearson) sebagai pelengkap. Mean dihitung lintas semua parameter × lead time (0–168 jam) sesuai filter "
-    "init cycle. Urutan peringkat = mean RMSE terendah (#1 = terbaik). HARP tidak memakai skill score generik "
-    "untuk variabel kontinu; ranking langsung dari RMSE (atau MAE/bias jika dipilih)."
+    "Peringkat mengikuti harpPoint det_verify() untuk variabel kontinu (thresholds=NULL): mean "
+    "bias, RMSE, MAE, stde lintas semua parameter × lead time (D+0–D+7), filter init cycle sidebar. "
+    "Urutan = mean RMSE terendah (#1). HARP tidak punya skill score generik untuk kontinu — skill "
+    "(Heidke, Brier SS, dll.) hanya muncul jika verifikasi kategorikal dengan thresholds=. "
+    "MONAS menambahkan mean korelasi (Pearson) sebagai pelengkap. KPI di tab Overview mengikuti "
+    "parameter & lead time sidebar; ranking diagregasi dari cache SQLite (pre-compute saat pipeline, "
+    "pola sama PSIIDN)."
 )
 
 HARP_SKILL_SCORES = [
@@ -69,6 +71,13 @@ HARP_PYTHON_NOTE = (
     "menggantikan workflow R→SQLite yang dipakai di lingkungan litbangweb."
 )
 
+HARP_CACHE = (
+    "Pola PSIIDN: semua kalkulasi verifikasi dijalankan saat pipeline (bukan saat buka website). "
+    "Hasil disimpan di SQLite — verification_scores (agregat), verification_station_scores (peta), "
+    "ranking_cache (peringkat). Dashboard hanya membaca cache. Backfill otomatis saat startup jika "
+    "skor ada tapi cache belum terisi; manual: python scripts/rebuild_dashboard_cache.py"
+)
+
 
 def get_methodology() -> dict:
     return {
@@ -80,6 +89,7 @@ def get_methodology() -> dict:
         "qc": HARP_QC,
         "ranking": HARP_RANKING,
         "skill_scores": HARP_SKILL_SCORES,
+        "cache": HARP_CACHE,
         "python_equivalence": HARP_PYTHON_NOTE,
         "implementation": {
             "interpolation": "RegularGridInterpolator (Python/scipy) — setara harpIO transformation=interpolate",

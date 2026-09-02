@@ -126,27 +126,25 @@ def generate_demo_data() -> dict:
     # Populate precomputed verification scores for demo dashboard
     from backend.config import DB_PATH
     from backend.services.pipeline import init_pipeline_db, save_verification_scores
-    from backend.services.verification import build_verification_pairs, det_verify
 
     init_pipeline_db()
     obs_df = pd.DataFrame(obs_rows)
     fcst_df = pd.DataFrame(fcst_rows)
-    scores = []
-    for param in ["temp_drybulb_c_tttttt", "wind_speed_ff", "relative_humidity_pc",
-                  "pressure_qff_mb_derived", "rainfall_6h_rrr", "cloud_cover_oktas_m"]:
-        param_obs = obs_df[obs_df["parameter"] == param]
-        for model in models:
-            mfcst = fcst_df[(fcst_df["model"] == model) & (fcst_df["parameter"] == param)]
-            for lt in sorted(mfcst["lead_time"].unique()):
-                lt_fcst = mfcst[mfcst["lead_time"] == lt]
-                pairs = build_verification_pairs(param_obs, lt_fcst, param)
-                vr = det_verify(pairs, param, model, int(lt))
-                if vr:
-                    d = vr.to_dict()
-                    d["init_time"] = init_time.isoformat()
-                    scores.append(d)
-
+    from backend.services.verification_cache import (
+        compute_run_verification,
+        refresh_ranking_cache,
+        save_verification_station_scores,
+    )
+    init_iso = init_time.isoformat()
+    scores: list[dict] = []
+    station_rows: list[dict] = []
+    for model in models:
+        s, st = compute_run_verification(model, init_iso, obs_df)
+        scores.extend(s)
+        station_rows.extend(st)
     save_verification_scores(scores)
+    save_verification_station_scores(station_rows)
+    refresh_ranking_cache()
 
     import sqlite3
     conn = sqlite3.connect(DB_PATH)

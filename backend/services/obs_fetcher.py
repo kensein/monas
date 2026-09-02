@@ -64,7 +64,9 @@ def init_db() -> None:
             PRIMARY KEY (model, init_time, lead_time, station_id, parameter)
         );
         CREATE INDEX IF NOT EXISTS idx_obs_time ON observations(valid_time);
+        CREATE INDEX IF NOT EXISTS idx_obs_lookup ON observations(station_id, parameter, valid_time);
         CREATE INDEX IF NOT EXISTS idx_fcst_model ON forecasts(model, parameter);
+        CREATE INDEX IF NOT EXISTS idx_fcst_lookup ON forecasts(model, init_time, parameter, lead_time, station_id);
     """)
     conn.commit()
     conn.close()
@@ -230,6 +232,7 @@ def load_observations(
     date_from: str | None = None,
     date_to: str | None = None,
     parameters: list[str] | None = None,
+    station_id: str | None = None,
 ) -> pd.DataFrame:
     conn = get_db()
     q = "SELECT station_id, valid_time, parameter, value, qc_flag FROM observations WHERE 1=1"
@@ -243,6 +246,9 @@ def load_observations(
     if parameters:
         q += f" AND parameter IN ({','.join('?' * len(parameters))})"
         params.extend(parameters)
+    if station_id:
+        q += " AND station_id=?"
+        params.append(station_id)
     df = pd.read_sql_query(q, conn, params=params)
     conn.close()
     return df
@@ -265,7 +271,13 @@ def save_forecasts(df: pd.DataFrame) -> int:
     return len(df)
 
 
-def load_forecasts(models: list[str] | None = None, parameters: list[str] | None = None) -> pd.DataFrame:
+def load_forecasts(
+    models: list[str] | None = None,
+    parameters: list[str] | None = None,
+    init_time: str | None = None,
+    station_id: str | None = None,
+    lead_time: int | None = None,
+) -> pd.DataFrame:
     conn = get_db()
     q = "SELECT model, init_time, lead_time, station_id, valid_time, parameter, fcst FROM forecasts WHERE 1=1"
     params: list[Any] = []
@@ -275,6 +287,15 @@ def load_forecasts(models: list[str] | None = None, parameters: list[str] | None
     if parameters:
         q += f" AND parameter IN ({','.join('?' * len(parameters))})"
         params.extend(parameters)
+    if init_time:
+        q += " AND init_time=?"
+        params.append(init_time)
+    if station_id:
+        q += " AND station_id=?"
+        params.append(station_id)
+    if lead_time is not None:
+        q += " AND lead_time=?"
+        params.append(lead_time)
     df = pd.read_sql_query(q, conn, params=params)
     conn.close()
     return df

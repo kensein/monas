@@ -38,7 +38,6 @@ from backend.services.pipeline import (
 from backend.services.sample_data import generate_demo_data
 from backend.services.scheduler import start_scheduler
 from backend.services.sftp_client import get_server_model_inventory
-from backend.services.verification import compute_ranking
 
 app = FastAPI(
     title="NWP Verification API",
@@ -68,6 +67,11 @@ async def startup() -> None:
     import os
     init_db()
     init_pipeline_db()
+    from backend.services.verification_cache import cache_is_stale, init_verification_cache_db, rebuild_dashboard_cache
+    init_verification_cache_db()
+    if cache_is_stale():
+        job = create_job("cache_rebuild")
+        run_in_background(job.id, rebuild_dashboard_cache)
     from backend.services.station_catalog import sync_catalog_to_db
     try:
         sync_catalog_to_db()
@@ -271,24 +275,13 @@ def verification_ranking(
     init_time: str | None = None,
     score: str = Query("rmse"),
 ) -> dict[str, Any]:
+    from backend.services.verification_cache import get_or_build_ranking
+
     model_list = [m.strip() for m in models.split(",") if m.strip()]
-    df = load_verification_scores(models=model_list, init_time=init_time)
-
-    if df.empty:
+    payload = get_or_build_ranking(model_list, init_time=init_time, score=score)
+    if not payload:
         raise HTTPException(status_code=404, detail="Belum ada data ranking")
-
-    from backend.services.verification import VerificationResult
-    results = [
-        VerificationResult(
-            parameter=row["parameter"], model=row["model"], lead_time=int(row["lead_time"]),
-            n_cases=int(row["n_cases"]), n_stations=int(row["n_stations"]),
-            bias=row["bias"], rmse=row["rmse"], mae=row["mae"],
-            stde=row["stde"], correlation=row["correlation"],
-        )
-        for _, row in df.iterrows()
-    ]
-    ranking = compute_ranking(results, score=score)
-    return {"score_metric": score, "init_time": init_time, "ranking": ranking}
+    return payload
 
 
 @app.get("/api/verification/map")
@@ -298,29 +291,13 @@ def verification_map(
     lead_time: int = Query(12),
     init_time: str | None = None,
 ) -> list[dict]:
-    from backend.services.obs_fetcher import load_forecasts
-    from backend.services.verification import build_verification_pairs
+    from backend.services.verification_cache import load_verification_station_scores
 
-    obs_df = load_observations(parameters=[parameter])
-    fcst_df = load_forecasts(models=[model], parameters=[parameter])
-    if init_time:
-        fcst_df = fcst_df[fcst_df["init_time"] == init_time]
-    fcst_df = fcst_df[fcst_df["lead_time"] == lead_time]
-    stations_df = get_stations()
-
-    circular = VERIFY_PARAMETERS.get(parameter, {}).get("category") == "circular"
-    pairs = build_verification_pairs(obs_df, fcst_df, parameter, circular=circular)
-    if pairs.empty:
+    stats = load_verification_station_scores(model, parameter, lead_time, init_time=init_time)
+    if stats.empty:
         return []
 
-    pairs["error"] = pairs["fcst"] - pairs["obs"]
-    stats = pairs.groupby("station_id").agg(
-        rmse=("error", lambda e: float((e ** 2).mean()) ** 0.5),
-        bias=("error", "mean"),
-        n_cases=("fcst", "count"),
-        obs_mean=("obs", "mean"),
-        fcst_mean=("fcst", "mean"),
-    ).reset_index()
+    stations_df = get_stations()
     return stats.merge(stations_df, on="station_id", how="left").round(4).to_dict(orient="records")
 
 
@@ -335,13 +312,11 @@ def station_detail(
     from backend.services.time_utils import normalize_valid_time
 
     model_list = [m.strip() for m in models.split(",") if m.strip()]
-    obs_df = load_observations(parameters=[parameter])
-    obs_df = obs_df[obs_df["station_id"] == station_id].copy()
+    obs_df = load_observations(parameters=[parameter], station_id=station_id)
     obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
-    fcst_df = load_forecasts(models=model_list, parameters=[parameter])
-    if init_time:
-        fcst_df = fcst_df[fcst_df["init_time"] == init_time]
-    fcst_df = fcst_df[fcst_df["station_id"] == station_id].copy()
+    fcst_df = load_forecasts(
+        models=model_list, parameters=[parameter], init_time=init_time, station_id=station_id,
+    )
     fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
 
     times = sorted(set(obs_df["valid_time"].dropna()) | set(fcst_df["valid_time"].dropna()))
