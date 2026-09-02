@@ -22,11 +22,15 @@ User hanya melihat hasil verifikasi HARP: **D+0 (analysis)** sampai **D+7** (168
 | Layer | Teknologi |
 |-------|-----------|
 | Backend | Python **FastAPI** (:8013) |
-| Frontend | Static HTML/JS + **Plotly.js** + **Leaflet** (:3013) |
+| Frontend | Static HTML/JS + **Canvas 2D** (chart & peta) (:3013) |
 | Database | SQLite (`data/nwp_verify.db`) |
 | Verifikasi | Python reimplementasi alur **harpPoint** / **harpIO** |
 
-**Plot & tabel di browser = JavaScript (Plotly + HTML), bukan Python.** Python hanya menghitung skor saat pipeline dan melayani JSON via API. PSIIDN skew-T cepat karena pakai **HTML Canvas 2D** (React `SoundingSkewT`), bukan Plotly — stack berbeda, bukan backend Python.
+**Plot & peta di browser = HTML Canvas 2D** (modul `canvas-charts.js`, `canvas-map.js`), bukan Plotly/Leaflet. Python hanya menghitung skor saat pipeline dan melayani JSON via API. PSIIDN skew-T juga Canvas — pola serupa.
+
+Modul Canvas:
+- `MonasChart` — bar chart (ranking) & multi-line (scores, detail stasiun)
+- `StationCanvasMap` — tile Carto + titik stasiun satu layer canvas (pan/zoom/klik)
 
 ## Implementasi MONAS (referensi internal)
 
@@ -124,9 +128,4 @@ POST /api/v21/export/observation/by-station/query  (parameter_names: ["*"])
 
 ## Detail Stasiun — performa
 
-Tab **Detail Stasiun** memanggil API JSON lalu render **Plotly.js** di browser. Lambat jika:
-
-- Init cycle = "semua" → ribuan titik fcst dari banyak cycle (sekarang default ke **init terbaru**)
-- Lead time tidak difilter → gunakan slider sidebar (API filter `lead_time`)
-
-Optimasi: `scattergl` untuk dataset besar, downsample plot max ~400 titik, tabel tetap 20 baris terakhir.
+Tab **Detail Stasiun** memanggil API JSON lalu render **Canvas** di browser. Filter **init cycle** + **lead time** di sidebar. Downsample plot max ~400 titik; tabel 20 baris terakhir.

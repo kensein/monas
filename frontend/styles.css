@@ -121,7 +121,7 @@ main { padding: 1rem; overflow-y: auto; }
 .kpi .value { font-size: 1.3rem; font-weight: 600; color: var(--accent); }
 
 .map-wrap { display: grid; grid-template-columns: 1fr 320px; gap: 1rem; }
-#leafletMap { height: 520px; border-radius: 10px; border: 1px solid var(--border); }
+#leafletMap { height: 520px; border-radius: 10px; border: 1px solid var(--border); position: relative; }
 
 .detail-box {
   background: var(--panel);

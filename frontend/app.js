@@ -23,15 +23,7 @@ const MODEL_COLORS = {
   IFS: '#7c3aed',
 };
 
-const PLOT_LAYOUT = {
-  paper_bgcolor: '#ffffff',
-  plot_bgcolor: '#f8fafc',
-  font: { color: '#334155', family: 'Segoe UI, system-ui, sans-serif' },
-  xaxis: { gridcolor: '#e2e8f0', linecolor: '#cbd5e1' },
-  yaxis: { gridcolor: '#e2e8f0', linecolor: '#cbd5e1' },
-};
-
-let map, mapTileLayer, markers = [];
+let rankingChart, scoreChart, stationChart, stationMap;
 let paramsMeta = {};
 let maxLeadTime = 168;
 let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy' };
@@ -60,12 +52,38 @@ async function loadPublicConfig() {
   try {
     const cfg = await api('/api/config/public');
     cartoApiKey = cfg.carto_api_key || '';
+    if (stationMap) stationMap.setCartoKey(cartoApiKey);
   } catch (e) {
     console.warn('public config', e);
   }
 }
 
+function initCharts() {
+  rankingChart = new MonasChart('rankingChart');
+  scoreChart = new MonasChart('scoreChart', {
+    onClick(hit) {
+      if (hit.type !== 'pt' || !hit.extra) return;
+      const ex = hit.extra;
+      document.getElementById('scoreDetail').innerHTML =
+        `<strong>${hit.series}</strong> · ${formatLeadTime(+hit.x)}<br>
+         RMSE: <strong>${hit.y.toFixed(4)}</strong> · Bias: ${ex.bias?.toFixed(4)} ·
+         MAE: ${ex.mae?.toFixed(4)} · stde: ${ex.stde?.toFixed(4)} ·
+         r: ${ex.correlation?.toFixed(4)} · N: ${ex.n_cases}`;
+    },
+  });
+  stationChart = new MonasChart('stationChart');
+  stationMap = new StationCanvasMap('leafletMap', {
+    cartoKey: cartoApiKey,
+    onStationClick(st) {
+      const param = document.getElementById('parameter').value;
+      const init = selectedInitTime();
+      showStationMapDetail(st.station_id, param, init);
+    },
+  });
+}
+
 async function init() {
+  initCharts();
   await loadPublicConfig();
   const data = await api('/api/parameters');
   paramsMeta = data.verify_parameters;
@@ -84,7 +102,6 @@ async function init() {
   await loadCycles();
   await loadPipelineStatus();
   await loadModelSources();
-  initMap();
   bindEvents();
   await refreshAll();
 
@@ -219,18 +236,13 @@ async function loadOverview() {
       <div class="metric">Bias: ${r.mean_bias?.toFixed(3)} · stde: ${r.mean_stde?.toFixed(3)} · r: ${r.mean_correlation?.toFixed(3)}</div>
     </div>`).join('');
 
-  Plotly.newPlot('rankingChart', [{
-    type: 'bar',
-    x: ranking.ranking.map(r => r.model),
-    y: ranking.ranking.map(r => r.mean_rmse),
-    marker: { color: ['#00529B', '#64748b', '#94a3b8', '#cbd5e1'] },
-    text: ranking.ranking.map(r => `#${r.rank} RMSE ${r.mean_rmse?.toFixed(3)}`),
-    textposition: 'auto',
-  }], {
-    ...PLOT_LAYOUT,
-    title: 'Ranking HARP det_verify — Mean RMSE (metrik utama, semakin kecil semakin baik)',
-    yaxis: { ...PLOT_LAYOUT.yaxis, title: 'Mean RMSE' },
-  }, { responsive: true });
+  rankingChart.setBar({
+    title: 'Ranking HARP det_verify — Mean RMSE (semakin kecil semakin baik)',
+    yLabel: 'Mean RMSE',
+    labels: ranking.ranking.map(r => r.model),
+    values: ranking.ranking.map(r => r.mean_rmse),
+    colors: ['#00529B', '#64748b', '#94a3b8', '#cbd5e1'],
+  });
 
   document.getElementById('kpiGrid').innerHTML = scores.scores.map(s => `
     <div class="kpi">
@@ -243,75 +255,49 @@ async function loadOverview() {
 async function loadScores() {
   const param = document.getElementById('parameter').value;
   const data = await api(`/api/verification/scores?${scoresQuery()}`);
-  const traces = selectedModels().map(m => {
+  const series = selectedModels().map(m => {
     const pts = data.scores.filter(s => s.model === m).sort((a, b) => a.lead_time - b.lead_time);
     return {
       name: m,
+      color: MODEL_COLORS[m] || '#00529B',
       x: pts.map(p => p.lead_time),
       y: pts.map(p => p.rmse),
-      mode: 'lines+markers',
-      type: 'scatter',
-      line: { color: MODEL_COLORS[m] || '#00529B', width: 2 },
-      marker: { size: 7, color: MODEL_COLORS[m] },
-      customdata: pts.map(p => [p.bias, p.mae, p.n_cases, p.n_stations, p.correlation, p.stde]),
-      hovertemplate: `${m}<br>%{x} jam<br>RMSE: %{y:.3f}<br>Bias: %{customdata[0]:.3f}<extra></extra>`,
+      extra: pts.map(p => ({ bias: p.bias, mae: p.mae, n_cases: p.n_cases, correlation: p.correlation, stde: p.stde })),
     };
   });
 
-  Plotly.newPlot('scoreChart', traces, {
-    ...PLOT_LAYOUT,
+  scoreChart.setLines({
     title: `RMSE vs Lead Time (D+0 → D+${maxLeadTime / 24}) — ${paramsMeta[param]?.label}`,
-    xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Lead Time (jam)', dtick: 24 },
-    yaxis: { ...PLOT_LAYOUT.yaxis, title: 'RMSE' },
-  }, { responsive: true });
-
-  document.getElementById('scoreChart').on('plotly_click', ev => {
-    const pt = ev.points[0];
-    document.getElementById('scoreDetail').innerHTML =
-      `<strong>${pt.data.name}</strong> · ${formatLeadTime(pt.x)}<br>
-       RMSE: <strong>${pt.y.toFixed(4)}</strong> · Bias: ${pt.customdata[0].toFixed(4)} ·
-       MAE: ${pt.customdata[1].toFixed(4)} · stde: ${pt.customdata[5].toFixed(4)} ·
-       r: ${pt.customdata[4].toFixed(4)} · N: ${pt.customdata[2]}`;
+    xLabel: 'Lead Time (jam)',
+    yLabel: 'RMSE',
+    xNumeric: true,
+    series,
   });
 }
 
-function initMap() {
-  map = L.map('leafletMap').setView([-2.5, 118], 5);
-  const keyParam = cartoApiKey ? `?key=${encodeURIComponent(cartoApiKey)}` : '';
-  mapTileLayer = L.tileLayer(
-    `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${keyParam}`,
-    {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 19,
-    },
-  ).addTo(map);
-}
-
 async function loadMap() {
-  if (!map) initMap();
-  else setTimeout(() => map.invalidateSize(), 0);
+  if (stationMap) stationMap.invalidateSize();
   const lt = document.getElementById('leadTime').value;
   const param = document.getElementById('parameter').value;
   const model = selectedModels()[0] || 'InaNWP';
   const init = selectedInitTime();
   const q = `model=${model}&parameter=${param}&lead_time=${lt}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
   const data = await api(`/api/verification/map?${q}`);
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
   if (!data.length) {
+    stationMap.setStations([]);
     document.getElementById('mapDetail').textContent = 'Belum ada data peta untuk filter ini.';
     return;
   }
   const maxRmse = Math.max(...data.map(d => d.rmse || 0), 0.01);
-  data.forEach(d => {
-    if (!d.lat || !d.lon) return;
-    const color = d.rmse < maxRmse * 0.33 ? '#16a34a' : d.rmse < maxRmse * 0.66 ? '#ca8a04' : '#dc2626';
-    const m = L.circleMarker([d.lat, d.lon], { radius: 8, fillColor: color, color: '#fff', weight: 1, fillOpacity: 0.85 }).addTo(map);
-    m.bindPopup(`<b>${d.name || d.station_id}</b><br>RMSE: ${d.rmse?.toFixed(3)}`);
-    m.on('click', () => showStationMapDetail(d.station_id, param, init));
-    markers.push(m);
-  });
+  stationMap.setStations(data.map(d => ({
+    station_id: d.station_id,
+    name: d.name,
+    lat: d.lat,
+    lon: d.lon,
+    rmse: d.rmse,
+    color: d.rmse < maxRmse * 0.33 ? '#16a34a' : d.rmse < maxRmse * 0.66 ? '#ca8a04' : '#dc2626',
+  })));
+  document.getElementById('mapDetail').textContent = 'Klik stasiun pada peta untuk melihat fcst vs obs.';
 }
 
 function stationDetailQuery() {
@@ -342,48 +328,35 @@ async function showStationMapDetail(stationId, param, init) {
 
 async function loadStationDetail() {
   const stationId = document.getElementById('stationSelect').value;
+  const param = document.getElementById('parameter').value;
   const data = await api(`/api/station/${stationId}/detail?${stationDetailQuery()}`);
   const plotSeries = downsampleSeries(data.series);
-  const useGl = plotSeries.length > 150;
 
-  const traces = [{
+  const series = [{
     name: 'Observasi',
-    x: plotSeries.map(s => s.valid_time),
+    color: MODEL_COLORS.Observasi,
+    width: 1,
+    x: plotSeries.map(s => s.valid_time?.slice(0, 16)),
     y: plotSeries.map(s => s.obs),
-    mode: 'lines+markers',
-    type: useGl ? 'scattergl' : 'scatter',
-    line: { color: MODEL_COLORS.Observasi, width: 1, dash: 'dot' },
-    marker: { size: 5, color: MODEL_COLORS.Observasi },
-    connectgaps: false,
   }];
 
   selectedModels().forEach(m => {
-    const xs = [];
-    const ys = [];
-    plotSeries.forEach(s => {
-      if (s[m] != null) { xs.push(s.valid_time); ys.push(s[m]); }
-    });
-    traces.push({
+    series.push({
       name: m,
-      x: xs,
-      y: ys,
-      mode: 'lines+markers',
-      type: useGl ? 'scattergl' : 'scatter',
-      line: { color: MODEL_COLORS[m] || '#00529B', width: 2 },
-      marker: { size: 4 },
-      connectgaps: true,
+      color: MODEL_COLORS[m] || '#00529B',
+      x: plotSeries.filter(s => s[m] != null).map(s => s.valid_time?.slice(0, 16)),
+      y: plotSeries.filter(s => s[m] != null).map(s => s[m]),
     });
   });
 
   const initNote = data.init_time ? ` · init ${String(data.init_time).slice(0, 16)}` : '';
   const ltNote = data.lead_time != null ? ` · ${formatLeadTime(Number(data.lead_time))}` : '';
-  Plotly.newPlot('stationChart', traces, {
-    ...PLOT_LAYOUT,
-    title: `${data.station.name || stationId} — ${paramsMeta[document.getElementById('parameter').value]?.label}${initNote}${ltNote}`,
-    xaxis: { ...PLOT_LAYOUT.xaxis, title: 'Valid Time (UTC)' },
-    yaxis: { ...PLOT_LAYOUT.yaxis, title: paramsMeta[document.getElementById('parameter').value]?.unit || '' },
-    legend: { orientation: 'h', y: -0.15 },
-  }, { responsive: true });
+  stationChart.setLines({
+    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label}${initNote}${ltNote}`,
+    xLabel: 'Valid Time (UTC)',
+    yLabel: paramsMeta[param]?.unit || '',
+    series,
+  });
 
   const paired = data.series.filter(s =>
     s.obs != null && selectedModels().some(m => s[m] != null)
