@@ -357,93 +357,59 @@ def station_detail(
     parameter: str = Query("temp_drybulb_c_tttttt"),
     models: str = Query("InaNWP,InaCAWO,GFS,IFS"),
     init_time: str | None = None,
-    lead_time: int | None = None,
+    lead_time: int | None = Query(12),
+    months: int = Query(3, ge=1, le=12),
 ) -> dict[str, Any]:
-    from backend.services.artifacts import load_station_series_cache
-    from backend.services.obs_fetcher import load_forecasts
-    from backend.services.pipeline import get_available_cycles
-    from backend.services.time_utils import normalize_valid_time
+    """Time series kalender (Juni → obs terakhir), window = N bulan terakhir.
+
+    Lead time memilih lapisan forecast; gap pada garis model = model tidak running.
+    """
+    from backend.services.artifacts import (
+        build_station_calendar_live,
+        load_station_calendar_cache,
+        series_archive_start,
+        window_bounds,
+    )
 
     model_list = [m.strip() for m in models.split(",") if m.strip()]
-    resolved_init = init_time
-    if not resolved_init:
-        done = [c for c in get_available_cycles() if c.get("status") == "done"]
-        if done:
-            resolved_init = done[0]["init_time"]
+    lt = int(lead_time if lead_time is not None else 12)
+    date_from, date_to = window_bounds(months)
 
     st = get_stations()
     info = st[st["station_id"] == station_id]
     station_info = info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id}
 
-    # Fast path: precomputed light series (webpsi readonly / setelah export)
-    cached = load_station_series_cache(station_id, parameter, resolved_init)
+    cached = load_station_calendar_cache(
+        station_id, parameter, lead_time=lt, date_from=date_from, date_to=date_to,
+    )
     if cached:
         series = []
         for row in cached:
-            entry = {"lead_time": row["lead_time"], "valid_time": row.get("valid_time")}
+            entry = {"valid_time": row.get("valid_time"), "lead_time": lt}
             if "obs" in row:
                 entry["obs"] = row["obs"]
             for m in model_list:
                 if m in row:
                     entry[m] = row[m]
             series.append(entry)
-        return {
-            "station": station_info,
-            "parameter": parameter,
-            "init_time": resolved_init,
-            "available_lead_times": [s["lead_time"] for s in series],
-            "series": series,
-            "source": "cache",
-        }
-
-    # Fallback: raw forecasts + obs (PC compute machine)
-    obs_df = load_observations(parameters=[parameter], station_id=station_id)
-    if obs_df.empty:
-        obs_df = obs_df.assign(valid_time=pd.Series(dtype=str))
+        source = "cache"
     else:
-        obs_df = obs_df.copy()
-        obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
-
-    fcst_df = load_forecasts(
-        models=model_list,
-        parameters=[parameter],
-        init_time=resolved_init,
-        station_id=station_id,
-        lead_time=None,
-    )
-    obs_sub = obs_df[["valid_time", "value"]].drop_duplicates("valid_time").rename(columns={"value": "obs"})
-    obs_map = dict(zip(obs_sub["valid_time"], obs_sub["obs"])) if not obs_sub.empty else {}
-
-    series = []
-    available_lead_times: list[int] = []
-    if not fcst_df.empty:
-        fcst_df = fcst_df.copy()
-        fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
-        fcst_df["lead_time"] = fcst_df["lead_time"].astype(int)
-        available_lead_times = sorted(fcst_df["lead_time"].unique().tolist())
-
-        for lt in available_lead_times:
-            lt_fcst = fcst_df[fcst_df["lead_time"] == lt]
-            vt = lt_fcst["valid_time"].iloc[0] if not lt_fcst.empty else None
-            if not vt or pd.isna(vt):
-                continue
-            entry: dict[str, Any] = {"lead_time": int(lt), "valid_time": str(vt)}
-            if vt in obs_map:
-                entry["obs"] = float(obs_map[vt])
-            for model in model_list:
-                mrow = lt_fcst[lt_fcst["model"] == model]
-                if not mrow.empty and pd.notna(mrow.iloc[0]["fcst"]):
-                    entry[model] = float(mrow.iloc[0]["fcst"])
-            if "obs" in entry or any(m in entry for m in model_list):
-                series.append(entry)
+        series = build_station_calendar_live(
+            station_id, parameter, model_list, lead_time=lt, months=months,
+        )
+        source = "live"
 
     return {
         "station": station_info,
         "parameter": parameter,
-        "init_time": resolved_init,
-        "available_lead_times": available_lead_times,
+        "lead_time": lt,
+        "months": months,
+        "date_from": date_from,
+        "date_to": date_to,
+        "archive_start": series_archive_start().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "series": series,
-        "source": "live",
+        "source": source,
+        "note": "Gap pada garis model = tidak ada forecast (model tidak running) pada valid time itu.",
     }
 
 

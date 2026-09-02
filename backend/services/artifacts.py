@@ -7,13 +7,13 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from backend.config import ARTIFACTS_DIR, DB_PATH, MODELS
+from backend.config import ARTIFACTS_DIR, DB_PATH, MODELS, OBS_FETCH_START
 
 
 LIGHT_TABLES = (
@@ -22,7 +22,7 @@ LIGHT_TABLES = (
     "verification_station_scores",
     "ranking_cache",
     "stations",
-    "station_series_cache",
+    "station_calendar_cache",
 )
 
 
@@ -34,23 +34,35 @@ def _connect(path: Path | str) -> sqlite3.Connection:
     return conn
 
 
+def series_archive_start() -> datetime:
+    """Awal arsip time series Detail Stasiun (default 1 Juni tahun berjalan)."""
+    if OBS_FETCH_START:
+        try:
+            s = OBS_FETCH_START.replace("Z", "+00:00")
+            return datetime.fromisoformat(s).replace(tzinfo=None)
+        except ValueError:
+            pass
+    now = datetime.utcnow()
+    return datetime(now.year, 6, 1)
+
+
 def init_station_series_cache(conn: sqlite3.Connection | None = None) -> None:
+    """Init calendar cache (nama fungsi lama dipertahankan untuk kompatibilitas)."""
     own = conn is None
     if own:
         conn = _connect(DB_PATH)
     conn.executescript("""
-        CREATE TABLE IF NOT EXISTS station_series_cache (
+        CREATE TABLE IF NOT EXISTS station_calendar_cache (
             station_id TEXT NOT NULL,
             parameter TEXT NOT NULL,
-            init_time TEXT NOT NULL,
             lead_time INTEGER NOT NULL,
-            valid_time TEXT,
+            valid_time TEXT NOT NULL,
             obs REAL,
             InaNWP REAL, InaCAWO REAL, GFS REAL, IFS REAL,
-            PRIMARY KEY (station_id, parameter, init_time, lead_time)
+            PRIMARY KEY (station_id, parameter, lead_time, valid_time)
         );
-        CREATE INDEX IF NOT EXISTS idx_station_series_lookup
-            ON station_series_cache(station_id, parameter, init_time);
+        CREATE INDEX IF NOT EXISTS idx_station_calendar_lookup
+            ON station_calendar_cache(station_id, parameter, lead_time, valid_time);
     """)
     if own:
         conn.commit()
@@ -61,102 +73,134 @@ def rebuild_station_series_cache(
     init_times: list[str] | None = None,
     parameters: list[str] | None = None,
 ) -> int:
-    """Precompute light station detail (obs + 4 models) dari forecasts/observations."""
+    """Precompute kalender valid_time × lead_time (semua init) untuk Detail Stasiun."""
     from backend.config import VERIFY_PARAMETERS
     from backend.services.obs_fetcher import load_forecasts, load_observations
     from backend.services.time_utils import normalize_valid_time
 
     init_station_series_cache()
     params = parameters or list(VERIFY_PARAMETERS.keys())
-    obs_df = load_observations(parameters=params)
+    archive_start = series_archive_start().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    obs_df = load_observations(parameters=params, date_from=archive_start)
     if not obs_df.empty:
         obs_df = obs_df.copy()
         obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
 
     fcst_df = load_forecasts(models=MODELS, parameters=params)
-    if fcst_df.empty:
+    if fcst_df.empty and obs_df.empty:
         return 0
-    fcst_df = fcst_df.copy()
-    fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
-    fcst_df["lead_time"] = fcst_df["lead_time"].astype(int)
-    if init_times:
-        fcst_df = fcst_df[fcst_df["init_time"].isin(init_times)]
 
-    rows: list[tuple] = []
-    for (station_id, parameter, init_time), grp in fcst_df.groupby(
-        ["station_id", "parameter", "init_time"]
-    ):
-        obs_sub = obs_df[
-            (obs_df["station_id"] == station_id) & (obs_df["parameter"] == parameter)
-        ] if not obs_df.empty else pd.DataFrame()
-        obs_map = (
-            dict(zip(obs_sub["valid_time"], obs_sub["value"]))
-            if not obs_sub.empty else {}
-        )
-        for lt, lt_grp in grp.groupby("lead_time"):
-            vt = lt_grp["valid_time"].iloc[0]
-            entry = {
-                "station_id": station_id,
-                "parameter": parameter,
-                "init_time": init_time,
-                "lead_time": int(lt),
-                "valid_time": str(vt) if pd.notna(vt) else None,
-                "obs": float(obs_map[vt]) if vt in obs_map else None,
-                "InaNWP": None, "InaCAWO": None, "GFS": None, "IFS": None,
-            }
-            for _, r in lt_grp.iterrows():
-                m = r["model"]
-                if m in entry and pd.notna(r["fcst"]):
-                    entry[m] = float(r["fcst"])
-            rows.append((
-                entry["station_id"], entry["parameter"], entry["init_time"],
-                entry["lead_time"], entry["valid_time"], entry["obs"],
-                entry["InaNWP"], entry["InaCAWO"], entry["GFS"], entry["IFS"],
-            ))
+    if not fcst_df.empty:
+        fcst_df = fcst_df.copy()
+        fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
+        fcst_df["lead_time"] = fcst_df["lead_time"].astype(int)
+        if init_times:
+            fcst_df = fcst_df[fcst_df["init_time"].isin(init_times)]
+        fcst_df = fcst_df[fcst_df["valid_time"] >= archive_start]
+
+    # Per lead_time: union obs times + forecast times → gaps terlihat di garis model
+    obs_index: dict[tuple[str, str, str], float] = {}
+    if not obs_df.empty:
+        for _, r in obs_df.iterrows():
+            vt = r["valid_time"]
+            if not vt:
+                continue
+            obs_index[(str(r["station_id"]), str(r["parameter"]), str(vt))] = float(r["value"])
+
+    lead_times = (
+        sorted(int(x) for x in fcst_df["lead_time"].unique())
+        if not fcst_df.empty else [0, 12]
+    )
+    stations_params: set[tuple[str, str]] = set()
+    if not fcst_df.empty:
+        for sid, param in fcst_df[["station_id", "parameter"]].drop_duplicates().itertuples(index=False):
+            stations_params.add((str(sid), str(param)))
+    for sid, param, _vt in obs_index:
+        stations_params.add((sid, param))
+
+    rows: list[dict] = []
+    for sid, param in stations_params:
+        obs_times = {vt for (s, p, vt) in obs_index if s == sid and p == param}
+        for lt in lead_times:
+            model_maps: dict[str, dict[str, float]] = {m: {} for m in MODELS}
+            times = set(obs_times)
+            if not fcst_df.empty:
+                sub = fcst_df[
+                    (fcst_df["station_id"].astype(str) == sid)
+                    & (fcst_df["parameter"].astype(str) == param)
+                    & (fcst_df["lead_time"] == lt)
+                ]
+                for _, r in sub.iterrows():
+                    vt = str(r["valid_time"]) if pd.notna(r["valid_time"]) else None
+                    if not vt:
+                        continue
+                    times.add(vt)
+                    m = r["model"]
+                    if m in model_maps and pd.notna(r["fcst"]):
+                        model_maps[m][vt] = float(r["fcst"])
+            for vt in times:
+                rows.append({
+                    "station_id": sid,
+                    "parameter": param,
+                    "lead_time": int(lt),
+                    "valid_time": vt,
+                    "obs": obs_index.get((sid, param, vt)),
+                    "InaNWP": model_maps["InaNWP"].get(vt),
+                    "InaCAWO": model_maps["InaCAWO"].get(vt),
+                    "GFS": model_maps["GFS"].get(vt),
+                    "IFS": model_maps["IFS"].get(vt),
+                })
+
+    tuples = [
+        (e["station_id"], e["parameter"], e["lead_time"], e["valid_time"], e["obs"],
+         e["InaNWP"], e["InaCAWO"], e["GFS"], e["IFS"])
+        for e in rows
+    ]
 
     conn = _connect(DB_PATH)
     init_station_series_cache(conn)
-    if init_times:
-        for it in init_times:
-            conn.execute("DELETE FROM station_series_cache WHERE init_time=?", (it,))
-    else:
-        conn.execute("DELETE FROM station_series_cache")
+    conn.execute("DELETE FROM station_calendar_cache")
     conn.executemany(
-        """INSERT OR REPLACE INTO station_series_cache
-           (station_id, parameter, init_time, lead_time, valid_time, obs,
+        """INSERT OR REPLACE INTO station_calendar_cache
+           (station_id, parameter, lead_time, valid_time, obs,
             InaNWP, InaCAWO, GFS, IFS)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        rows,
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        tuples,
     )
     conn.commit()
     conn.close()
-    return len(rows)
+    return len(tuples)
 
 
-def load_station_series_cache(
+def load_station_calendar_cache(
     station_id: str,
     parameter: str,
-    init_time: str | None = None,
+    lead_time: int,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> list[dict[str, Any]]:
     init_station_series_cache()
     conn = _connect(DB_PATH)
-    q = """SELECT lead_time, valid_time, obs, InaNWP, InaCAWO, GFS, IFS
-           FROM station_series_cache
-           WHERE station_id=? AND parameter=?"""
-    params: list[Any] = [station_id, parameter]
-    if init_time:
-        q += " AND init_time=?"
-        params.append(init_time)
-    q += " ORDER BY lead_time"
+    q = """SELECT valid_time, obs, InaNWP, InaCAWO, GFS, IFS, lead_time
+           FROM station_calendar_cache
+           WHERE station_id=? AND parameter=? AND lead_time=?"""
+    params: list[Any] = [station_id, parameter, lead_time]
+    if date_from:
+        q += " AND valid_time >= ?"
+        params.append(date_from)
+    if date_to:
+        q += " AND valid_time <= ?"
+        params.append(date_to)
+    q += " ORDER BY valid_time"
     rows = conn.execute(q, params).fetchall()
     conn.close()
     out = []
     for r in rows:
         d = dict(r)
-        # drop null model keys for cleaner payload
-        entry = {
-            "lead_time": d["lead_time"],
+        entry: dict[str, Any] = {
             "valid_time": d["valid_time"],
+            "lead_time": d["lead_time"],
         }
         if d["obs"] is not None:
             entry["obs"] = d["obs"]
@@ -165,6 +209,99 @@ def load_station_series_cache(
                 entry[m] = d[m]
         out.append(entry)
     return out
+
+
+# Alias lama
+def load_station_series_cache(
+    station_id: str,
+    parameter: str,
+    init_time: str | None = None,
+) -> list[dict[str, Any]]:
+    return load_station_calendar_cache(station_id, parameter, lead_time=12)
+
+
+def window_bounds(months: int) -> tuple[str, str]:
+    """Clamp display window ke [archive_start, now], panjang = months terakhir."""
+    months = max(1, min(12, int(months)))
+    now = datetime.utcnow()
+    archive = series_archive_start()
+    start = now - timedelta(days=30 * months)
+    if start < archive:
+        start = archive
+    return (
+        start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+
+def build_station_calendar_live(
+    station_id: str,
+    parameter: str,
+    model_list: list[str],
+    lead_time: int,
+    months: int = 3,
+) -> list[dict[str, Any]]:
+    """Bangun time series kalender dari forecasts+obs (PC / fallback)."""
+    from backend.services.obs_fetcher import load_forecasts, load_observations
+    from backend.services.time_utils import normalize_valid_time
+
+    date_from, date_to = window_bounds(months)
+    archive = series_archive_start().strftime("%Y-%m-%dT%H:%M:%SZ")
+    if date_from < archive:
+        date_from = archive
+
+    obs_df = load_observations(
+        parameters=[parameter], station_id=station_id,
+        date_from=date_from, date_to=date_to,
+    )
+    if not obs_df.empty:
+        obs_df = obs_df.copy()
+        obs_df["valid_time"] = obs_df["valid_time"].map(normalize_valid_time)
+
+    fcst_df = load_forecasts(
+        models=model_list, parameters=[parameter],
+        station_id=station_id, lead_time=lead_time,
+    )
+    if not fcst_df.empty:
+        fcst_df = fcst_df.copy()
+        fcst_df["valid_time"] = fcst_df["valid_time"].map(normalize_valid_time)
+        fcst_df = fcst_df[
+            (fcst_df["valid_time"] >= date_from) & (fcst_df["valid_time"] <= date_to)
+        ]
+
+    # Union of valid times
+    times: set[str] = set()
+    obs_map: dict[str, float] = {}
+    if not obs_df.empty:
+        for _, r in obs_df.iterrows():
+            vt = r["valid_time"]
+            if vt:
+                times.add(str(vt))
+                obs_map[str(vt)] = float(r["value"])
+
+    model_maps: dict[str, dict[str, float]] = {m: {} for m in model_list}
+    if not fcst_df.empty:
+        for _, r in fcst_df.iterrows():
+            vt = str(r["valid_time"]) if pd.notna(r["valid_time"]) else None
+            if not vt:
+                continue
+            times.add(vt)
+            m = r["model"]
+            if m in model_maps and pd.notna(r["fcst"]):
+                # jika beberapa init untuk valid_time sama, ambil yang terakhir (init terbaru)
+                model_maps[m][vt] = float(r["fcst"])
+
+    series: list[dict[str, Any]] = []
+    for vt in sorted(times):
+        entry: dict[str, Any] = {"valid_time": vt, "lead_time": lead_time}
+        if vt in obs_map:
+            entry["obs"] = obs_map[vt]
+        for m in model_list:
+            if vt in model_maps[m]:
+                entry[m] = model_maps[m][vt]
+        if "obs" in entry or any(m in entry for m in model_list):
+            series.append(entry)
+    return series
 
 
 def export_light_artifacts(tag: str | None = None) -> dict[str, Any]:
@@ -176,11 +313,9 @@ def export_light_artifacts(tag: str | None = None) -> dict[str, Any]:
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
 
-    # Pastikan series cache terisi sebelum export
     series_n = rebuild_station_series_cache()
 
     src = _connect(DB_PATH)
-    # Ensure tables exist on source
     init_station_series_cache(src)
     from backend.services.verification_cache import init_verification_cache_db
     init_verification_cache_db()
@@ -199,7 +334,6 @@ def export_light_artifacts(tag: str | None = None) -> dict[str, Any]:
         if not exists:
             counts[table] = 0
             continue
-        # Copy schema + data
         schema = src.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
             (table,),
@@ -219,7 +353,6 @@ def export_light_artifacts(tag: str | None = None) -> dict[str, Any]:
     dest.close()
     src.close()
 
-    # Also write latest pointer
     latest = ARTIFACTS_DIR / "latest"
     if latest.exists() or latest.is_symlink():
         if latest.is_symlink() or latest.is_file():
@@ -233,7 +366,8 @@ def export_light_artifacts(tag: str | None = None) -> dict[str, Any]:
         "exported_at": datetime.utcnow().isoformat() + "Z",
         "source_db": str(DB_PATH),
         "tables": counts,
-        "station_series_rows": series_n,
+        "station_calendar_rows": series_n,
+        "archive_start": series_archive_start().isoformat() + "Z",
         "serve_mode": "readonly",
         "note": "Import ke webpsi: python scripts/import_artifacts.py --from data/artifacts/latest",
     }
@@ -271,7 +405,6 @@ def import_light_artifacts(source: str | Path) -> dict[str, Any]:
         if not exists:
             counts[table] = 0
             continue
-        # Ensure dest has table
         schema = src.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
             (table,),

@@ -248,8 +248,14 @@ function bindEvents() {
     document.getElementById('leadTimeLabel').textContent = formatLeadTime(+document.getElementById('leadTime').value);
     const tab = document.querySelector('.tab.active')?.dataset.tab;
     if (tab === 'map') renderMapFromCache();
-    else if (tab === 'station') renderStationFromCache();
-    else refreshAll();
+    else if (tab === 'station') {
+      stationDetailCache.key = '';
+      loadStationDetail();
+    } else refreshAll();
+  });
+  document.getElementById('stationRangeMonths')?.addEventListener('change', () => {
+    stationDetailCache.key = '';
+    loadStationDetail();
   });
   document.querySelectorAll('.model-cb').forEach(cb => cb.addEventListener('change', () => {
     mapBulkCache.key = '';
@@ -399,13 +405,13 @@ async function loadMap() {
 }
 
 async function showStationMapDetail(stationId, param, init) {
-  const q = `parameter=${param}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
-  const data = await api(`/api/station/${stationId}/detail?${q}`);
   const lt = +document.getElementById('leadTime').value;
-  const available = data.available_lead_times || data.series.map(s => s.lead_time);
-  const resolvedLt = available.includes(lt) ? lt : nearestLeadTime(available, lt);
-  const row = data.series.find(s => s.lead_time === resolvedLt) || data.series.slice(-1)[0] || {};
-  let html = `<strong>${data.station.name || stationId}</strong> · ${formatLeadTime(row.lead_time ?? lt)}<br>`;
+  const months = +document.getElementById('stationRangeMonths')?.value || 3;
+  const q = `parameter=${param}&models=${modelsQuery()}&lead_time=${lt}&months=${months}`;
+  const data = await api(`/api/station/${stationId}/detail?${q}`);
+  const rows = data.series || [];
+  const row = rows.filter(s => selectedModels().some(m => s[m] != null)).slice(-1)[0] || rows.slice(-1)[0] || {};
+  let html = `<strong>${data.station.name || stationId}</strong> · ${formatLeadTime(lt)}<br>`;
   html += `<span class="time-utc">${formatTimeDual(row.valid_time)}</span><table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>`;
   selectedModels().forEach(m => {
     const err = row[m] != null && row.obs != null ? (row[m] - row.obs).toFixed(3) : '—';
@@ -415,8 +421,22 @@ async function showStationMapDetail(stationId, param, init) {
 }
 
 function stationDetailQuery() {
-  const init = selectedInitTime();
-  return `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
+  const lt = document.getElementById('leadTime').value;
+  const months = document.getElementById('stationRangeMonths')?.value || 3;
+  return `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}&lead_time=${lt}&months=${months}`;
+}
+
+function toEpochMs(isoUtc) {
+  if (!isoUtc) return null;
+  const s = String(isoUtc).endsWith('Z') ? isoUtc : `${isoUtc}Z`;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
+}
+
+function downsampleSeries(rows, maxPoints = 800) {
+  if (rows.length <= maxPoints) return rows;
+  const step = Math.ceil(rows.length / maxPoints);
+  return rows.filter((_, i) => i % step === 0 || i === rows.length - 1);
 }
 
 function renderStationFromCache() {
@@ -425,49 +445,56 @@ function renderStationFromCache() {
   const param = document.getElementById('parameter').value;
   const stationId = document.getElementById('stationSelect').value;
   const lt = +document.getElementById('leadTime').value;
+  const months = +document.getElementById('stationRangeMonths')?.value || 3;
   const rows = data.series || [];
-  const available = data.available_lead_times || rows.map(r => r.lead_time);
-  const resolvedLt = available.includes(lt) ? lt : nearestLeadTime(available, lt);
+  const plotRows = downsampleSeries(rows);
 
+  const xs = plotRows.map(s => toEpochMs(s.valid_time)).filter(t => t != null);
   const series = [{
     name: 'Observasi',
     color: MODEL_COLORS.Observasi,
     width: 2,
-    x: rows.map(s => s.lead_time),
-    y: rows.map(s => s.obs),
+    x: plotRows.map(s => toEpochMs(s.valid_time)),
+    y: plotRows.map(s => (s.obs != null ? s.obs : null)),
   }];
   selectedModels().forEach(m => {
     series.push({
       name: m,
       color: MODEL_COLORS[m] || '#00529B',
-      x: rows.filter(s => s[m] != null).map(s => s.lead_time),
-      y: rows.filter(s => s[m] != null).map(s => s[m]),
+      width: 1.5,
+      x: plotRows.map(s => toEpochMs(s.valid_time)),
+      y: plotRows.map(s => (s[m] != null ? s[m] : null)),
     });
   });
 
-  const initNote = data.init_time ? ` · init ${formatTimeWIB(data.init_time)}` : '';
   stationChart.setLines({
-    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label}${initNote}`,
-    xLabel: 'Lead Time (jam)',
+    title: `${data.station.name || stationId} — ${paramsMeta[param]?.label} · ${months} bln · ${formatLeadTime(lt)}`,
+    xLabel: 'Waktu valid (WIB)',
     yLabel: paramsMeta[param]?.unit || '',
     xNumeric: true,
-    highlightX: resolvedLt,
+    xTime: true,
     series,
   });
 
   if (!rows.length) {
     document.getElementById('stationTable').innerHTML =
-      '<em>Belum ada pasangan fcst+obs untuk stasiun/parameter/init cycle ini.</em>';
+      `<em>Belum ada data time series untuk stasiun/parameter ini (window ${months} bulan, lead ${formatLeadTime(lt)}).</em>`;
     return;
   }
 
-  let html = '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Lead Time</th><th>Waktu Valid (WIB)</th><th>Obs</th>';
-  selectedModels().forEach(m => { html += `<th>${m}</th><th>Err ${m}</th>`; });
+  const withModel = rows.filter(s => selectedModels().some(m => s[m] != null));
+  const gaps = rows.filter(s => s.obs != null && !selectedModels().some(m => s[m] != null)).length;
+
+  let html = `<p class="lt-note">${rows.length} titik · ${withModel.length} ada forecast · ~${gaps} obs tanpa model (gap) · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
+  html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Waktu Valid (WIB)</th><th>Obs</th>';
+  selectedModels().forEach(m => { html += `<th>${m}</th><th>Err</th>`; });
   html += '</tr></thead><tbody>';
-  rows.forEach(s => {
-    const isHi = resolvedLt != null && s.lead_time === resolvedLt;
-    html += `<tr data-lead="${s.lead_time}" class="${isHi ? 'lt-highlight' : ''}">`;
-    html += `<td>${formatLeadTime(s.lead_time)}</td>`;
+
+  // Show last 200 rows for table performance; scrollable
+  const tableRows = rows.slice(-200);
+  tableRows.forEach(s => {
+    const hasModel = selectedModels().some(m => s[m] != null);
+    html += `<tr class="${hasModel ? '' : 'row-gap'}">`;
     html += `<td>${formatTimeDual(s.valid_time)}</td>`;
     html += `<td>${s.obs?.toFixed(2) ?? '—'}</td>`;
     selectedModels().forEach(m => {
@@ -477,19 +504,15 @@ function renderStationFromCache() {
     html += '</tr>';
   });
   html += '</tbody></table></div>';
-  if (resolvedLt != null && resolvedLt !== lt) {
-    html = `<p class="lt-note">Slider ${formatLeadTime(lt)} → baris terdekat ${formatLeadTime(resolvedLt)}.</p>` + html;
-  } else if (resolvedLt != null) {
-    html = `<p class="lt-note">Baris biru = lead time slider (${formatLeadTime(resolvedLt)}).</p>` + html;
+  if (rows.length > 200) {
+    html = `<p class="lt-note">Tabel menampilkan 200 baris terakhir dari ${rows.length}.</p>` + html;
   }
   document.getElementById('stationTable').innerHTML = html;
-
-  const hiRow = document.querySelector(`#stationTable tr[data-lead="${resolvedLt}"]`);
-  if (hiRow) hiRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 async function loadStationDetail() {
   const stationId = document.getElementById('stationSelect').value;
+  if (!stationId) return;
   const key = `${stationId}|${stationDetailQuery()}`;
   if (stationDetailCache.key !== key) {
     stationDetailCache.data = await api(`/api/station/${stationId}/detail?${stationDetailQuery()}`);

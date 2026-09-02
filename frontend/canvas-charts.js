@@ -44,6 +44,7 @@
       this.bar = null;
       this.lines = null;
       this.xNumeric = false;
+      this.xTime = false;
       this.highlightX = null;
       this.hover = null;
       this.onClick = opts.onClick || null;
@@ -82,12 +83,13 @@
       requestAnimationFrame(() => this.draw());
     }
 
-    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null }) {
+    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null, xTime = false }) {
       this.mode = 'line';
       this.title = title || this.title;
       this.xLabel = xLabel || '';
       this.yLabel = yLabel || '';
       this.xNumeric = xNumeric;
+      this.xTime = xTime;
       this.highlightX = highlightX;
       this.lines = series;
       this.bar = null;
@@ -253,13 +255,16 @@
           this._meta.push({ type: 'pt', series: s.name, x: s.x[i], y, px: x, py, color: s.color, extra: s.extra?.[i] });
         }
         ctx.stroke();
-        for (let i = 0; i < s.x.length; i++) {
-          const y = s.y[i];
-          if (y == null || Number.isNaN(y)) continue;
-          const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
-          ctx.beginPath();
-          ctx.arc(x, mapY(y), 4, 0, Math.PI * 2);
-          ctx.fill();
+        const drawDots = s.x.length <= 120;
+        if (drawDots) {
+          for (let i = 0; i < s.x.length; i++) {
+            const y = s.y[i];
+            if (y == null || Number.isNaN(y)) continue;
+            const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
+            ctx.beginPath();
+            ctx.arc(x, mapY(y), this.xTime ? 2.5 : 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
       });
 
@@ -268,7 +273,19 @@
         ctx.font = `11px ${FONT}`;
         ctx.textAlign = 'center';
         const xt = niceTicks(minX, maxX, 8);
-        xt.forEach(t => ctx.fillText(String(Math.round(t)), mapX(t), plot.y0 + plot.h + 16));
+        xt.forEach(t => {
+          let label;
+          if (this.xTime) {
+            try {
+              label = new Date(t).toLocaleString('id-ID', {
+                timeZone: 'Asia/Jakarta', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+              });
+            } catch { label = String(Math.round(t)); }
+          } else {
+            label = String(Math.round(t));
+          }
+          ctx.fillText(label, mapX(t), plot.y0 + plot.h + 16);
+        });
       }
 
       if (this.yLabel) {

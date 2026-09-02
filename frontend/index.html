@@ -79,8 +79,22 @@
       </div>
 
       <div id="station" class="panel">
-        <select id="stationSelect"></select>
-        <p class="hint-chart">Grafik &amp; tabel menampilkan semua lead time untuk init cycle terpilih. Geser slider lead time untuk highlight baris (waktu valid ditampilkan WIB + UTC).</p>
+        <div class="station-toolbar">
+          <select id="stationSelect"></select>
+          <label class="range-label">Rentang waktu
+            <select id="stationRangeMonths">
+              <option value="1">1 bulan terakhir</option>
+              <option value="2">2 bulan terakhir</option>
+              <option value="3" selected>3 bulan terakhir</option>
+              <option value="4">4 bulan terakhir</option>
+              <option value="5">5 bulan terakhir</option>
+              <option value="6">6 bulan terakhir</option>
+              <option value="9">9 bulan terakhir</option>
+              <option value="12">12 bulan terakhir (maks)</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint-chart">Time series kalender (WIB) sejak Juni / window dipilih. Garis kuning = observasi. Gap pada garis model = model tidak running pada hari/jam itu. Slider lead time memilih lapisan forecast.</p>
         <div id="stationChart" class="chart"></div>
         <div id="stationTable" class="detail-box">Tabel pasangan fcst vs obs per valid time.</div>
       </div>
