@@ -52,7 +52,7 @@ SFTP_HOST = os.getenv("SFTP_HOST", "202.90.199.54")
 SFTP_PORT = int(os.getenv("SFTP_PORT", "3346"))
 SFTP_USER = os.getenv("SFTP_USER", "litbangweb")
 SFTP_PASSWORD = os.getenv("SFTP_PASSWORD", "_Pusl1tb4ng.123_")
-SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/monas/obs")
+SFTP_OBS_PATH = os.getenv("SFTP_OBS_PATH", "/opt/lampp/htdocs/wrf/monas_obs")
 
 # litbangweb: baca obs dari folder JSON (tanpa BMKG API — server tanpa internet)
 LITBANGWEB_OBS_DIR = os.getenv("LITBANGWEB_OBS_DIR", SFTP_OBS_PATH)
