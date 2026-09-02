@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import paramiko
 
 from backend.config import (
+    DISABLE_SFTP,
     MODEL_LOCAL_PATHS,
     SFTP_HOST,
     SFTP_PASSWORD,
@@ -16,10 +18,19 @@ from backend.config import (
     SFTP_USER,
 )
 
+# Hindari traceback paramiko di console saat litbangweb tidak reachable
+logging.getLogger("paramiko").setLevel(logging.WARNING)
+
+
+def _is_unix_remote_path(path: str) -> bool:
+    p = path.strip().replace("\\", "/")
+    return p.startswith("/")
+
 
 def _sftp_connect() -> paramiko.SFTPClient:
     transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
-    transport.connect(username=SFTP_USER, password=SFTP_PASSWORD)
+    transport.banner_timeout = 15
+    transport.connect(username=SFTP_USER, password=SFTP_PASSWORD, timeout=15)
     return paramiko.SFTPClient.from_transport(transport)
 
 
@@ -30,7 +41,7 @@ def _local_exists(path: str) -> bool:
 def list_remote_nc_files(remote_path: str, pattern: str = "*.nc") -> list[dict[str, Any]]:
     """
     List NC files — prefer local path (when dashboard runs ON litbangweb server),
-    fallback to SFTP listing.
+    fallback to SFTP listing (unless DISABLE_SFTP).
     """
     results: list[dict[str, Any]] = []
 
@@ -45,6 +56,13 @@ def list_remote_nc_files(remote_path: str, pattern: str = "*.nc") -> list[dict[s
                     "accessible": True,
                     "source": "local",
                 })
+        return results
+
+    if DISABLE_SFTP:
+        return results
+
+    # Path Linux di PC Windows tanpa folder lokal — skip SFTP jika path server-only
+    if os.name == "nt" and _is_unix_remote_path(remote_path) and not local.exists():
         return results
 
     try:
@@ -65,8 +83,8 @@ def list_remote_nc_files(remote_path: str, pattern: str = "*.nc") -> list[dict[s
                 "source": "sftp",
             })
         sftp.close()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[sftp] skip list {remote_path}: {e}")
 
     return results
 
@@ -80,6 +98,12 @@ def resolve_model_nc_path(nc_path: str) -> Path:
     p = Path(nc_path)
     if p.exists():
         return p
+
+    if DISABLE_SFTP:
+        raise FileNotFoundError(
+            f"File NC tidak ditemukan lokal: {nc_path}. "
+            "Set LOCAL_NC_PATH / INANWP_NC_PATH atau DISABLE_SFTP=false untuk download SFTP."
+        )
 
     # SFTP remote — check cache
     from backend.config import NC_DIR

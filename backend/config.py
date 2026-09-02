@@ -91,6 +91,19 @@ LEAD_TIME_STEP = int(os.getenv("LEAD_TIME_STEP", "3"))
 # Auto pipeline interval (seconds)
 PIPELINE_INTERVAL_SEC = int(os.getenv("PIPELINE_INTERVAL_SEC", "3600"))
 
+# PC dev (Windows): jangan SFTP ke litbangweb saat startup — set false jika perlu inventory remote
+_disable_sftp_env = os.getenv("DISABLE_SFTP")
+if _disable_sftp_env is not None:
+    DISABLE_SFTP = _disable_sftp_env.lower() in ("1", "true", "yes")
+else:
+    DISABLE_SFTP = os.name == "nt"
+
+# Scheduler background pipeline (matikan di PC dev: ENABLE_PIPELINE_SCHEDULER=false)
+ENABLE_PIPELINE_SCHEDULER = os.getenv("ENABLE_PIPELINE_SCHEDULER", "true").lower() in ("1", "true", "yes")
+
+# Obs dari JSON lokal (D:\nwp-data\obs) — jangan fetch BMKG API di scheduler
+USE_LOCAL_OBS_JSON = os.getenv("USE_LOCAL_OBS_JSON", "false").lower() in ("1", "true", "yes")
+
 MODELS = ["InaNWP", "InaCAWO", "GFS", "IFS"]
 
 # Model tanpa NC → forecast dummy derived dari InaNWP

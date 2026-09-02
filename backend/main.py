@@ -77,14 +77,14 @@ async def startup() -> None:
     if SEED_DEMO_DATA and load_verification_scores().empty:
         generate_demo_data()
     start_scheduler()
-    # Local mode: scan Windows/local NC folders when FORCE_PIPELINE or local path exists
+    # Local mode: scan NC lokal sekali (tanpa SFTP) bila path ada
     force = os.getenv("FORCE_PIPELINE", "").lower() == "true"
     local_paths = [
         os.getenv("INANWP_NC_PATH", ""),
         LOCAL_NC_PATH,
     ]
     has_local = any(p and __import__("pathlib").Path(p).exists() for p in local_paths)
-    if force or has_local:
+    if (force or has_local) and os.getenv("DISABLE_STARTUP_PIPELINE", "false").lower() not in ("1", "true", "yes"):
         job = create_job("pipeline_scan")
         run_in_background(job.id, run_full_pipeline)
 
