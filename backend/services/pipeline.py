@@ -13,6 +13,7 @@ from backend.config import (
     LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
     MODEL_LOCAL_PATHS,
+    USE_DUMMY_MODELS,
     VERIFY_PARAMETERS,
 )
 from backend.services.nc_ingest import ingest_nc_from_path
@@ -58,6 +59,10 @@ def init_pipeline_db() -> None:
             status TEXT, message TEXT, details TEXT
         );
     """)
+    try:
+        conn.execute("ALTER TABLE model_runs ADD COLUMN data_source TEXT DEFAULT 'real'")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -321,18 +326,26 @@ def process_model_run(
 
         conn = get_db()
         conn.execute(
-            """UPDATE model_runs SET status='done', processed_at=?, error_message=NULL
+            """UPDATE model_runs SET status='done', processed_at=?, error_message=NULL, data_source='real'
                WHERE model=? AND init_time=?""",
             (datetime.utcnow().isoformat(), model, init_time),
         )
         conn.commit()
         conn.close()
 
-        return {
+        result = {
             "scores_saved": saved,
             "forecast_records": ingest_result.get("forecast_records", 0),
             "obs_sync": obs_sync,
         }
+
+        if model == "InaNWP" and USE_DUMMY_MODELS:
+            from backend.services.dummy_models import verify_dummy_models
+            report(90, "Generate & verifikasi model dummy (InaCAWO, GFS, IFS)...")
+            dummy_result = verify_dummy_models(init_time, progress_cb=progress_cb)
+            result["dummy_models"] = dummy_result
+
+        return result
 
     except Exception as e:
         conn = get_db()
@@ -396,4 +409,5 @@ def get_pipeline_status() -> dict[str, Any]:
         "server_paths": {m: c["path"] for m, c in MODEL_LOCAL_PATHS.items()},
         "local_nc_path": LOCAL_NC_PATH or None,
         "max_lead_time_hours": MAX_LEAD_TIME_HOURS,
+        "model_sources": __import__("backend.services.dummy_models", fromlist=["get_model_data_sources"]).get_model_data_sources(),
     }

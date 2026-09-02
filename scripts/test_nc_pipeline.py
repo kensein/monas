@@ -95,6 +95,11 @@ def cmd_full(nc_path: Path, model: str, fetch_obs: bool) -> None:
         print(f"Fetch observasi BMKG untuk init {init_time.isoformat()}...")
         obs_result = sync_observations_for_init(init_time.isoformat())
         print(f"  obs: {obs_result}")
+    else:
+        from backend.config import OBS_EXPORT_DIR
+        from backend.services.obs_sync import import_obs_from_json_dir
+        imported = import_obs_from_json_dir(OBS_EXPORT_DIR)
+        print(f"  import obs JSON: {imported}")
 
     t0 = time.time()
 

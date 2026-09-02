@@ -151,6 +151,23 @@ async def fetch_bmkg_obs(body: ObsFetchRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.get("/api/harp/methodology")
+def harp_methodology() -> dict[str, Any]:
+    from backend.services.harp_methodology import get_methodology
+    return get_methodology()
+
+
+@app.get("/api/models/sources")
+def model_sources() -> dict[str, Any]:
+    from backend.services.dummy_models import get_model_data_sources
+    from backend.config import DUMMY_MODELS, USE_DUMMY_MODELS
+    return {
+        "sources": get_model_data_sources(),
+        "dummy_models": DUMMY_MODELS,
+        "use_dummy_models": USE_DUMMY_MODELS,
+    }
+
+
 @app.get("/api/parameters")
 def list_parameters() -> dict[str, Any]:
     return {

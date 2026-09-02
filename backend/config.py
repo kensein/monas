@@ -88,6 +88,11 @@ PIPELINE_INTERVAL_SEC = int(os.getenv("PIPELINE_INTERVAL_SEC", "3600"))
 
 MODELS = ["InaNWP", "InaCAWO", "GFS", "IFS"]
 
+# Model tanpa NC → forecast dummy derived dari InaNWP
+DUMMY_MODELS = [m.strip() for m in os.getenv("DUMMY_MODELS", "InaCAWO,GFS,IFS").split(",") if m.strip()]
+USE_DUMMY_MODELS = os.getenv("USE_DUMMY_MODELS", "true").lower() in ("1", "true", "yes")
+REAL_MODELS = [m for m in MODELS if m not in DUMMY_MODELS]
+
 # All Sinoptik parameters from API Export Sinoptik (slide 8)
 SINOPTIK_PARAMETERS = [
     "station_name", "data_timestamp",
