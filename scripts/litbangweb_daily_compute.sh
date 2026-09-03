@@ -77,6 +77,31 @@ if [ -n "$CODE_DIR" ]; then
   fi
 fi
 
+# Preflight: overlay menimpa /app/backend sepenuhnya — harus berisi modul f32.
+# Image lama tanpa rebuild juga butuh overlay lengkap.
+need_files=()
+if [ ${#CODE_MOUNTS[@]} -gt 0 ]; then
+  need_files+=(
+    "$CODE_DIR/backend/services/harp_compute.py"
+    "$CODE_DIR/backend/services/harp_store.py"
+    "$CODE_DIR/scripts/harp_compute.py"
+  )
+fi
+missing=()
+for f in "${need_files[@]}"; do
+  [ -f "$f" ] || missing+=("$f")
+done
+if [ ${#missing[@]} -gt 0 ]; then
+  log "ERROR: CODE_DIR overlay tidak lengkap (modul f32 hilang). Overlay menimpa /app/backend di container."
+  for f in "${missing[@]}"; do
+    log "  MISSING: $f"
+  done
+  log "Perbaiki di PC: git pull origin main, lalu scp -r backend scripts → litbangweb /tmp/,"
+  log "  lalu: sudo rm -rf $CODE_DIR/{backend,scripts} && sudo cp -a /tmp/backend /tmp/scripts $CODE_DIR/"
+  log "  (atau rebuild image monas-compute:latest yang sudah include PR #23)"
+  exit 2
+fi
+
 STORE_DIR="$DATA_DIR/artifacts"
 # f32 store (PSIIDN-style). KEEP_RUNS_PER_MODEL=0 = simpan semua run.
 KEEP_RUNS_PER_MODEL="${KEEP_RUNS_PER_MODEL:-0}"
@@ -114,7 +139,7 @@ docker run --rm -i \
   -e LITBANGWEB_OBS_DIR=/data/obs \
   -e PYTHONPATH=/app \
   "$IMAGE" \
-  -c "cd /app; if [ ! -f scripts/harp_compute.py ]; then echo 'ERROR: scripts/harp_compute.py tidak ada di image — rebuild image atau set CODE_DIR overlay'; exit 2; fi; exec python -u scripts/harp_compute.py --obs-dir /data/obs --max-runs '$VERIFY_MAX_RUNS' --keep-runs '$KEEP_RUNS_PER_MODEL' $HARP_EXTRA_ARGS"
+  -c "cd /app; if [ ! -f scripts/harp_compute.py ]; then echo 'ERROR: scripts/harp_compute.py tidak ada — rebuild image atau set CODE_DIR overlay lengkap (backend/services/harp_compute.py + harp_store.py)'; exit 2; fi; if [ ! -f backend/services/harp_compute.py ]; then echo 'ERROR: backend/services/harp_compute.py hilang (overlay tidak lengkap / image lama)'; ls -la backend/services/ 2>/dev/null | head -40; exit 2; fi; exec python -u scripts/harp_compute.py --obs-dir /data/obs --max-runs '$VERIFY_MAX_RUNS' --keep-runs '$KEEP_RUNS_PER_MODEL' $HARP_EXTRA_ARGS"
 
 if [ ! -f "$STORE_DIR/manifest.json" ]; then
   log "ERROR: manifest belum ada di $STORE_DIR"
