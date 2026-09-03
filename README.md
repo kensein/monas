@@ -9,10 +9,14 @@ Model NC di-sync otomatis dari server **litbangweb**. HARP membaca crop 2D di `/
 
 ```
 litbangweb server
-├── /opt/lampp/htdocs/wrf/wrfout/*.nc      ← InaNWP penuh (~12GB, 3D)
-├── /opt/lampp/htdocs/wrf/monas_nc/*.nc    ← crop CDO 2D untuk HARP
-├── /opt/lampp/htdocs/wrf/monas_obs/       ← obs JSON dari PC
-└── Docker monas-compute: HARP dari monas_nc → artifact → webpsi
+├── /opt/lampp/htdocs/wrf/wrfout/*.nc      ← InaNWP penuh (~12GB, lev=19)
+├── /opt/lampp/htdocs/wrf/monas_nc/*.nc    ← crop CDO/ncks 2D (~300MB) untuk HARP
+├── /opt/lampp/htdocs/wrf/monas_obs/       ← obs JSON full-param dari PC
+└── Docker monas-compute (scripts/harp_compute.py):
+      interp → obs (param HARP) → det_verify → f32 store → rsync webpsi
+
+f32 store (PSIIDN-style, tanpa SQLite): manifest.json + runs/<model>/<init>/*.f32 + obs/<bulan>/*.f32
+webpsi API (SERVE_READONLY, STORE_BACKEND=f32) membaca store langsung.
 ```
 
 User hanya melihat hasil verifikasi HARP: **D+0 (analysis)** sampai **D+7** (168 jam).

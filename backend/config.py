@@ -105,6 +105,10 @@ ENABLE_PIPELINE_SCHEDULER = os.getenv("ENABLE_PIPELINE_SCHEDULER", "true").lower
 # webpsi/PSIMKG serve-only: jangan hitung ulang / jangan fetch NC / obs
 SERVE_READONLY = os.getenv("SERVE_READONLY", "false").lower() in ("1", "true", "yes")
 
+# Penyimpanan hasil HARP: "f32" (PSIIDN-style float32 + JSON, default) atau "sqlite" (legacy)
+STORE_BACKEND = os.getenv("STORE_BACKEND", "f32").lower()
+USE_F32_STORE = STORE_BACKEND != "sqlite"
+
 # Parallel verify (PC/HPC): proses beberapa model sekaligus
 PARALLEL_VERIFY = os.getenv("PARALLEL_VERIFY", "true").lower() in ("1", "true", "yes")
 PARALLEL_WORKERS = int(os.getenv("PARALLEL_WORKERS", "4"))

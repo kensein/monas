@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Harian di litbangweb: crop (opsional) + verify InaNWP + export artifact.
+# Harian di litbangweb: crop NC (CDO/ncks) → HARP compute v2 → f32 store → rsync webpsi.
+# Tanpa SQLite: output = manifest.json + runs/<model>/<init>/*.f32 + obs/<bulan>/*.f32
 # Live log:
 #   tail -f /opt/lampp/htdocs/monas/logs/compute.log
 #   docker logs -f $(docker ps -q --filter ancestor=monas-compute:latest | head -1)
@@ -19,8 +20,6 @@ WEBPSI_SSH_PORT="${WEBPSI_SSH_PORT:-22}"
 RUN_CROP="${RUN_CROP:-true}"
 CROP_SCRIPT="${CROP_SCRIPT:-$(cd "$(dirname "$0")" && pwd)/crop_inanwp_cdo.sh}"
 SRC_NC="${SRC_NC:-/opt/lampp/htdocs/wrf/wrfout}"
-# Serial = live progress. Paralel: PARALLEL_VERIFY=true
-PARALLEL_VERIFY="${PARALLEL_VERIFY:-false}"
 # Harian: 1 run terbaru. Backfill semua: VERIFY_MAX_RUNS=0
 VERIFY_MAX_RUNS="${VERIFY_MAX_RUNS:-1}"
 # Skip arsip bulanan lama (sinoptik_202606… ~380MB). Harian cukup ~14 hari.
@@ -78,7 +77,12 @@ if [ -n "$CODE_DIR" ]; then
   fi
 fi
 
-log "Verify+export ($IMAGE) · PARALLEL_VERIFY=$PARALLEL_VERIFY VERIFY_MAX_RUNS=$VERIFY_MAX_RUNS"
+STORE_DIR="$DATA_DIR/artifacts"
+# f32 store (PSIIDN-style). KEEP_RUNS_PER_MODEL=0 = simpan semua run.
+KEEP_RUNS_PER_MODEL="${KEEP_RUNS_PER_MODEL:-0}"
+HARP_EXTRA_ARGS="${HARP_EXTRA_ARGS:-}"   # mis. "--force" atau "--force-obs"
+
+log "HARP compute v2 ($IMAGE) → $STORE_DIR · VERIFY_MAX_RUNS=$VERIFY_MAX_RUNS KEEP_RUNS_PER_MODEL=$KEEP_RUNS_PER_MODEL"
 log "Monitor: tail -f $LOG_FILE   |   docker logs -f \$(docker ps -q --filter ancestor=$IMAGE | head -1)"
 
 docker run --rm -i \
@@ -90,41 +94,50 @@ docker run --rm -i \
   -v "$OBS_DIR:/data/obs:ro" \
   -v "$DATA_DIR:/app/data" \
   -e ARTIFACTS_DIR=/app/data/artifacts \
+  -e HARP_STORE_DIR=/app/data/artifacts \
+  -e STORE_BACKEND=f32 \
   -e PYTHONUNBUFFERED=1 \
   -e PYTHONIOENCODING=utf-8 \
   -e OPENBLAS_NUM_THREADS=1 \
   -e OMP_NUM_THREADS=1 \
   -e MKL_NUM_THREADS=1 \
   -e NUMEXPR_NUM_THREADS=1 \
-  -e PARALLEL_VERIFY="$PARALLEL_VERIFY" \
-  -e PARALLEL_WORKERS="${PARALLEL_WORKERS:-4}" \
   -e VERIFY_MAX_RUNS="$VERIFY_MAX_RUNS" \
-  -e USE_DUMMY_MODELS="${USE_DUMMY_MODELS:-false}" \
+  -e KEEP_RUNS_PER_MODEL="$KEEP_RUNS_PER_MODEL" \
+  -e USE_DUMMY_MODELS=false \
+  -e DISABLE_SFTP=true \
+  -e OFFLINE_OBS_MODE=true \
+  -e INANWP_NC_PATH=/data/nc \
+  -e INACAWO_NC_PATH=/data/nc \
+  -e GFS_NC_PATH=/data/nc \
+  -e IFS_NC_PATH=/data/nc \
+  -e LITBANGWEB_OBS_DIR=/data/obs \
+  -e PYTHONPATH=/app \
   "$IMAGE" \
-  -c 'sed -i "s/\r$//" /app/entrypoint.sh /app/scripts/*.sh 2>/dev/null; python -u -c "from backend.services.obs_fetcher import init_db; from backend.services.pipeline import init_pipeline_db; init_db(); init_pipeline_db(); print(\"DB init OK\", flush=True)"; exec /bin/bash /app/entrypoint.sh verify'
+  -c "cd /app; if [ ! -f scripts/harp_compute.py ]; then echo 'ERROR: scripts/harp_compute.py tidak ada di image — rebuild image atau set CODE_DIR overlay'; exit 2; fi; exec python -u scripts/harp_compute.py --obs-dir /data/obs --max-runs '$VERIFY_MAX_RUNS' --keep-runs '$KEEP_RUNS_PER_MODEL' $HARP_EXTRA_ARGS"
 
-ARTIFACT_SRC="$DATA_DIR/artifacts/latest"
-if [ ! -d "$ARTIFACT_SRC" ]; then
-  log "ERROR: artifact belum ada di $ARTIFACT_SRC"
+if [ ! -f "$STORE_DIR/manifest.json" ]; then
+  log "ERROR: manifest belum ada di $STORE_DIR"
   exit 1
 fi
-log "Artifact OK: $ARTIFACT_SRC"
+log "Store OK: $STORE_DIR ($(du -sh "$STORE_DIR" 2>/dev/null | cut -f1))"
 
 if [ -n "$WEBPSI_HOST" ] && [ -n "$WEBPSI_USER" ]; then
-  log "Sync artifact → ${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}"
+  log "Sync store → ${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}"
   ssh -p "$WEBPSI_SSH_PORT" "${WEBPSI_USER}@${WEBPSI_HOST}" "mkdir -p ${WEBPSI_PATH}"
   if command -v rsync >/dev/null 2>&1; then
-    rsync -avz --delete -e "ssh -p ${WEBPSI_SSH_PORT}" \
-      "${ARTIFACT_SRC}/" "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/latest/"
+    # --delete: run yang di-prune di litbangweb ikut hilang di webpsi
+    rsync -az --delete -e "ssh -p ${WEBPSI_SSH_PORT}" \
+      "$STORE_DIR/manifest.json" "$STORE_DIR/runs" "$STORE_DIR/obs" \
+      "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/"
   else
-    scp -P "$WEBPSI_SSH_PORT" -r "${ARTIFACT_SRC}" \
+    scp -P "$WEBPSI_SSH_PORT" -r "$STORE_DIR/manifest.json" "$STORE_DIR/runs" "$STORE_DIR/obs" \
       "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/"
   fi
-  ssh -p "$WEBPSI_SSH_PORT" "${WEBPSI_USER}@${WEBPSI_HOST}" \
-    "cd /var/www/monas && .venv/bin/python scripts/import_artifacts.py --from ${WEBPSI_PATH}/latest && pm2 restart monas-api"
-  log "webpsi import + restart monas-api selesai"
+  # API membaca manifest.json secara live (mtime) — restart tidak wajib
+  log "webpsi sync selesai (API baca manifest baru otomatis)"
 else
-  log "WEBPSI_HOST/USER kosong — sync dilewati"
+  log "WEBPSI_HOST/USER kosong — sync dilewati. Manual: rsync $STORE_DIR/{manifest.json,runs,obs} → webpsi data/artifacts/"
 fi
 
 log "Selesai"
