@@ -513,7 +513,7 @@ function renderStationFromCache() {
   const gaps = rows.filter(s => s.obs != null && !models.some(m => s[m] != null)).length;
 
   let html = `<p class="lt-note">${rows.length} titik · <strong>${withModel.length} ada forecast</strong> · ~${gaps} obs tanpa model (gap) · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
-  html += `<p class="lt-note">Lead time tetap = 1 titik model per init cycle (bukan garis kontinyu tiap jam). Uncheck model ber-badge <em>none</em>. Pilih init cycle spesifik di sidebar untuk fokus.</p>`;
+  html += `<p class="lt-note">Garis = observasi sinoptik. Titik warna = prakiraan model per init cycle. Area kosong = tidak ada pasangan fcst+obs.</p>`;
   html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Waktu Valid (WIB)</th><th>Obs</th>';
   models.forEach(m => { html += `<th>${m}</th><th>Err</th>`; });
   html += '</tr></thead><tbody>';
