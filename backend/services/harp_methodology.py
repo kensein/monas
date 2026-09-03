@@ -44,9 +44,7 @@ HARP_QC = (
 HARP_PYTHON_NOTE = (
     "HARP resmi ditulis dalam R (harpPoint, harpIO). MONAS mengimplementasikan alur yang sama "
     "dalam Python: NetCDF (crop 2D) → interpolasi scipy ke titik stasiun → join paired dengan obs "
-    "→ det_verify. Output skor (bias, RMSE, MAE, stde, correlation) setara harpPoint. "
-    "Hasil disimpan sebagai array float32 + JSON (pola PSIIDN) yang disinkron ke webpsi, "
-    "sehingga dashboard hanya membaca file, tidak menghitung ulang."
+    "→ det_verify. Output skor (bias, RMSE, MAE, stde, correlation) setara harpPoint."
 )
 
 def get_methodology() -> dict:

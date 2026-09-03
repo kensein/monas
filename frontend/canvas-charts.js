@@ -255,7 +255,8 @@
           this._meta.push({ type: 'pt', series: s.name, x: s.x[i], y, px: x, py, color: s.color, extra: s.extra?.[i] });
         }
         ctx.stroke();
-        const drawDots = s.x.length <= 120;
+        const drawDots = s.markers
+          || s.y.filter(y => y != null && !Number.isNaN(y)).length <= 200;
         if (drawDots) {
           for (let i = 0; i < s.x.length; i++) {
             const y = s.y[i];
