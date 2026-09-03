@@ -170,6 +170,8 @@ async function loadModelSources() {
       const src = modelSources[cb.value] || 'real';
       badge.textContent = src;
       badge.className = `badge ${src}`;
+      // Model tanpa run di store: uncheck agar chart tidak penuh kolom kosong
+      if (src === 'none') cb.checked = false;
     });
   } catch (e) { console.warn('model sources', e); }
 }
@@ -447,10 +449,17 @@ function toEpochMs(isoUtc) {
   return Number.isNaN(t) ? null : t;
 }
 
-function downsampleSeries(rows, maxPoints = 800) {
+function downsampleSeries(rows, maxPoints = 800, models = []) {
   if (rows.length <= maxPoints) return rows;
-  const step = Math.ceil(rows.length / maxPoints);
-  return rows.filter((_, i) => i % step === 0 || i === rows.length - 1);
+  const keep = new Set();
+  // Jangan buang titik yang punya forecast (jarang vs obs jam-jaman)
+  rows.forEach((r, i) => {
+    if (models.some(m => r[m] != null)) keep.add(i);
+  });
+  const step = Math.ceil(rows.length / Math.max(maxPoints - keep.size, 1));
+  for (let i = 0; i < rows.length; i += step) keep.add(i);
+  keep.add(rows.length - 1);
+  return rows.filter((_, i) => keep.has(i));
 }
 
 function renderStationFromCache() {
@@ -461,9 +470,9 @@ function renderStationFromCache() {
   const lt = +document.getElementById('leadTime').value;
   const months = +document.getElementById('stationRangeMonths')?.value || 3;
   const rows = data.series || [];
-  const plotRows = downsampleSeries(rows);
+  const models = selectedModels();
+  const plotRows = downsampleSeries(rows, 800, models);
 
-  const xs = plotRows.map(s => toEpochMs(s.valid_time)).filter(t => t != null);
   const series = [{
     name: 'Observasi',
     color: MODEL_COLORS.Observasi,
@@ -471,11 +480,12 @@ function renderStationFromCache() {
     x: plotRows.map(s => toEpochMs(s.valid_time)),
     y: plotRows.map(s => (s.obs != null ? s.obs : null)),
   }];
-  selectedModels().forEach(m => {
+  models.forEach(m => {
     series.push({
       name: m,
       color: MODEL_COLORS[m] || '#00529B',
-      width: 1.5,
+      width: 2,
+      markers: true,
       x: plotRows.map(s => toEpochMs(s.valid_time)),
       y: plotRows.map(s => (s[m] != null ? s[m] : null)),
     });
@@ -496,31 +506,32 @@ function renderStationFromCache() {
     return;
   }
 
-  const withModel = rows.filter(s => selectedModels().some(m => s[m] != null));
-  const gaps = rows.filter(s => s.obs != null && !selectedModels().some(m => s[m] != null)).length;
+  const withModel = rows.filter(s => models.some(m => s[m] != null));
+  const gaps = rows.filter(s => s.obs != null && !models.some(m => s[m] != null)).length;
 
-  let html = `<p class="lt-note">${rows.length} titik · ${withModel.length} ada forecast · ~${gaps} obs tanpa model (gap) · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
+  let html = `<p class="lt-note">${rows.length} titik · <strong>${withModel.length} ada forecast</strong> · ~${gaps} obs tanpa model (gap) · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
+  html += `<p class="lt-note">Lead time tetap = 1 titik model per init cycle (bukan garis kontinyu tiap jam). Uncheck model ber-badge <em>none</em>. Pilih init cycle spesifik di sidebar untuk fokus.</p>`;
   html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Waktu Valid (WIB)</th><th>Obs</th>';
-  selectedModels().forEach(m => { html += `<th>${m}</th><th>Err</th>`; });
+  models.forEach(m => { html += `<th>${m}</th><th>Err</th>`; });
   html += '</tr></thead><tbody>';
 
-  // Show last 200 rows for table performance; scrollable
-  const tableRows = rows.slice(-200);
+  // Utamakan baris yang punya forecast, lalu sisanya (maks ~200)
+  const prefer = withModel.slice(-100);
+  const preferSet = new Set(prefer);
+  const rest = rows.filter(r => !preferSet.has(r)).slice(-(200 - prefer.length));
+  const tableRows = [...prefer, ...rest].sort((a, b) => String(a.valid_time).localeCompare(String(b.valid_time)));
   tableRows.forEach(s => {
-    const hasModel = selectedModels().some(m => s[m] != null);
+    const hasModel = models.some(m => s[m] != null);
     html += `<tr class="${hasModel ? '' : 'row-gap'}">`;
     html += `<td>${formatTimeDual(s.valid_time)}</td>`;
     html += `<td>${s.obs?.toFixed(2) ?? '—'}</td>`;
-    selectedModels().forEach(m => {
+    models.forEach(m => {
       const err = s[m] != null && s.obs != null ? (s[m] - s.obs).toFixed(2) : '—';
       html += `<td>${s[m]?.toFixed(2) ?? '—'}</td><td>${err}</td>`;
     });
     html += '</tr>';
   });
   html += '</tbody></table></div>';
-  if (rows.length > 200) {
-    html = `<p class="lt-note">Tabel menampilkan 200 baris terakhir dari ${rows.length}.</p>` + html;
-  }
   document.getElementById('stationTable').innerHTML = html;
 }
 
