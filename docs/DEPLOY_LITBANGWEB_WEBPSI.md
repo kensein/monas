@@ -274,6 +274,11 @@ sudo cp -a /tmp/backend /opt/lampp/htdocs/monas/src/backend
 sudo cp -a /tmp/scripts /opt/lampp/htdocs/monas/src/scripts
 sudo find /opt/lampp/htdocs/monas/src \( -name '*.py' -o -name '*.sh' \) -exec sed -i 's/\r$//' {} \;
 
+# Wajib ada (overlay menimpa /app/backend di container — scp tidak lengkap → ModuleNotFoundError)
+ls -la /opt/lampp/htdocs/monas/src/backend/services/harp_compute.py \
+       /opt/lampp/htdocs/monas/src/backend/services/harp_store.py \
+       /opt/lampp/htdocs/monas/src/scripts/harp_compute.py
+
 # Store lama (SQLite) tidak dipakai lagi — boleh dipindah
 sudo mv /opt/lampp/htdocs/monas/compute-data/nwp_verify.db /opt/lampp/htdocs/monas/compute-data/nwp_verify.db.bak 2>/dev/null || true
 
@@ -300,6 +305,8 @@ crontab -e
 > Script host **tidak** memakai entrypoint image; ia langsung menjalankan
 > `python scripts/harp_compute.py` di dalam container. Dengan `CODE_DIR` (overlay `backend/` + `scripts/`)
 > image lama pun sudah menjalankan HARP v2 (f32) — rebuild image opsional.
+> Overlay **harus** berisi `backend/services/harp_compute.py` + `harp_store.py` + `scripts/harp_compute.py`
+> (dari `main` setelah PR #23). Overlay tidak lengkap → `ModuleNotFoundError` / exit 2 preflight.
 
 Set `WEBPSI_HOST` / `WEBPSI_USER` di `compute.env` agar rsync store ke webpsi otomatis.
 
