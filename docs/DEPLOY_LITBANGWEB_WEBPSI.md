@@ -377,5 +377,5 @@ Cek UI: https://psimkg.bmkg.go.id/monas/
 - [ ] litbangweb: crop CDO → `ls /opt/lampp/htdocs/wrf/monas_nc/`
 - [ ] litbangweb: `compute-data/artifacts/manifest.json` ada, `runs/InaNWP/<init>/scores.f32`
 - [ ] litbangweb: cron 04:00 crop + 04:30 `litbangweb_daily_compute.sh` (CODE_DIR jika overlay)
-- [ ] webpsi: `SERVE_READONLY=true`, PM2 monas-api/web, `data/artifacts/` terisi via rsync
+- [ ] webpsi: `SERVE_READONLY=true`, PM2 monas-api/web, `data/artifacts/` via SFTP pull (pola PSIIDN)
 - [ ] URL: https://psimkg.bmkg.go.id/monas/
