@@ -136,9 +136,7 @@ function initCharts() {
   stationMap = new StationCanvasMap('leafletMap', {
     cartoKey: cartoApiKey,
     onStationClick(st) {
-      const param = document.getElementById('parameter').value;
-      const init = selectedInitTime();
-      showStationMapDetail(st.station_id, param, init);
+      showStationMapDetail(st);
     },
   });
 }
@@ -440,6 +438,9 @@ function renderMapFromCache() {
     lat: d.lat,
     lon: d.lon,
     rmse: d.rmse,
+    fcst: d.fcst_mean,
+    obs: d.obs_mean,
+    lead_time: d.lead_time,
     color: d.rmse < maxRmse * 0.33 ? '#16a34a' : d.rmse < maxRmse * 0.66 ? '#ca8a04' : '#dc2626',
   })));
   const detail = document.getElementById('mapDetail');
@@ -464,20 +465,33 @@ async function loadMap() {
   }
 }
 
-async function showStationMapDetail(stationId, param, init) {
-  const lt = +document.getElementById('leadTime').value;
-  const months = +document.getElementById('stationRangeMonths')?.value || 3;
-  const q = `parameter=${param}&models=${modelsQuery()}&lead_time=${lt}&months=${months}`;
-  const data = await api(`/api/station/${stationId}/detail?${q}`);
-  const rows = data.series || [];
-  const row = rows.filter(s => selectedModels().some(m => s[m] != null)).slice(-1)[0] || rows.slice(-1)[0] || {};
-  let html = `<strong>${data.station.name || stationId}</strong> · ${formatLeadTime(lt)}<br>`;
-  html += `<span class="time-utc">${formatTimeDual(row.valid_time)}</span><table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>`;
-  selectedModels().forEach(m => {
-    const err = row[m] != null && row.obs != null ? (row[m] - row.obs).toFixed(3) : '—';
-    html += `<tr><td>${m}</td><td>${row[m]?.toFixed(2) ?? '—'}</td><td>${row.obs?.toFixed(2) ?? '—'}</td><td>${err}</td></tr>`;
-  });
-  document.getElementById('mapDetail').innerHTML = html + '</table>';
+async function showStationMapDetail(st) {
+  const stationId = st.station_id || st;
+  const model = selectedModels()[0];
+  const ltSlider = +document.getElementById('leadTime').value;
+  const available = mapBulkCache.data?.available_lead_times || [];
+  const resolvedLt = st.lead_time
+    ?? (available.includes(ltSlider) ? ltSlider : nearestLeadTime(available, ltSlider));
+  const recs = (mapBulkCache.data?.records || []).filter(
+    d => String(d.station_id) === String(stationId) && (resolvedLt == null || d.lead_time === resolvedLt),
+  );
+  const rec = recs[0];
+  const fcst = rec?.fcst_mean ?? st.fcst;
+  const obs = rec?.obs_mean ?? st.obs;
+  const name = rec?.name || st.name || stationId;
+  const initIso = mapBulkCache.data?.init_time;
+
+  let html = `<strong>${name}</strong> · ${formatLeadTime(resolvedLt ?? ltSlider)}`;
+  if (initIso) html += `<br><span class="time-utc">Init ${formatTimeDual(initIso)}</span>`;
+  html += '<table><tr><th>Model</th><th>Fcst</th><th>Obs</th><th>Err</th></tr>';
+  if (model) {
+    const err = fcst != null && obs != null && !Number.isNaN(fcst) && !Number.isNaN(obs)
+      ? (fcst - obs).toFixed(3) : '—';
+    html += `<tr><td>${model}</td><td>${Number.isFinite(fcst) ? fcst.toFixed(2) : '—'}</td>`;
+    html += `<td>${Number.isFinite(obs) ? obs.toFixed(2) : '—'}</td><td>${err}</td></tr>`;
+  }
+  html += '</table>';
+  document.getElementById('mapDetail').innerHTML = html;
 }
 
 function stationDetailQuery() {
