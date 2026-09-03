@@ -207,24 +207,32 @@ def import_obs_from_json_dir(
 
     total_saved = 0
     files_loaded = 0
-    for path in sorted(directory.glob(pattern)):
+    paths = sorted(directory.glob(pattern))
+    n_files = len(paths)
+    print(f"[obs] Import {n_files} file dari {directory} ({pattern})", flush=True)
+    for i, path in enumerate(paths, 1):
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"[obs]   skip {path.name}: {e}", flush=True)
             continue
         records = raw if isinstance(raw, list) else raw.get("data", [])
         from backend.services.obs_format import flatten_sinoptik_records
         records = flatten_sinoptik_records(records)
         if not records:
+            print(f"[obs]   [{i}/{n_files}] {path.name}: 0 records", flush=True)
             continue
         df = normalize_obs_records(records)
-        total_saved += save_observations(df)
+        n = save_observations(df)
         upsert_stations_from_records(records)
+        total_saved += n
         files_loaded += 1
+        print(f"[obs]   [{i}/{n_files}] {path.name}: +{n} rows (total {total_saved})", flush=True)
 
     result = {"files": files_loaded, "records_saved": total_saved, "directory": str(directory)}
     if cleared:
         result["cleared"] = cleared
+    print(f"[obs] Selesai: {result}", flush=True)
     return result
 
 

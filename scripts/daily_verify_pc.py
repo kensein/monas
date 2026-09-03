@@ -70,11 +70,22 @@ def step_import_obs_offline() -> dict:
     init_db()
     candidates = [Path(LITBANGWEB_OBS_DIR), Path(OBS_EXPORT_DIR), Path("/data/obs")]
     for d in candidates:
-        if d.is_dir() and any(d.glob("*.json")):
-            result = import_obs_from_json_dir(str(d))
-            log(f"   Import dari {d}: {result}")
-            return {"dir": str(d), **(result if isinstance(result, dict) else {"result": result})}
-    log("   WARN: tidak ada folder obs JSON — verifikasi mungkin gagal tanpa observasi")
+        if not d.is_dir():
+            log(f"   skip (bukan folder): {d}")
+            continue
+        files = sorted(d.glob("sinoptik_*.json"))
+        if not files:
+            # fallback: ada json lain?
+            other = list(d.glob("*.json"))[:5]
+            log(f"   {d}: 0 sinoptik_*.json (sample lain: {[p.name for p in other]})")
+            continue
+        sizes = sum(p.stat().st_size for p in files)
+        log(f"   Import {len(files)} file dari {d} ({sizes / 1e6:.0f} MB) — ini bisa beberapa menit...")
+        result = import_obs_from_json_dir(str(d))
+        log(f"   Selesai import: {result}")
+        return {"dir": str(d), **(result if isinstance(result, dict) else {"result": result})}
+    log("   WARN: tidak ada sinoptik_*.json di /data/obs — jalankan daily_obs_pc.bat di PC dulu")
+    log("   Verifikasi akan GAGAL tanpa observasi. Cek: ls /opt/lampp/htdocs/wrf/monas_obs/")
     return {"skipped": True, "reason": "no obs json dir"}
 
 
