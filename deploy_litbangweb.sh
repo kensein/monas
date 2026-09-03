@@ -1,43 +1,24 @@
 #!/bin/bash
-# Deploy NWP Verification Dashboard ke server litbangweb
-# Jalankan dari komputer yang bisa SSH/SFTP ke litbangweb
+# Deploy MONAS compute ke litbangweb (Docker, offline-friendly).
+# Host Ubuntu 16.04: JANGAN pip install di host — pakai image monas-compute.
+#
+# Prasyarat di PC online:
+#   scripts/build_compute_image.bat  →  dist/monas-compute.tar
+#   scp -P 3346 dist/monas-compute.tar litbangweb@HOST:/home/litbangweb/
+#
+# Lalu di litbangweb:
+#   bash scripts/install_litbangweb_compute.sh /home/litbangweb/monas-compute.tar
+#
+# Detail: docs/DEPLOY_LITBANGWEB_WEBPSI.md
 
-set -e
-DEPLOY_PATH="${DEPLOY_PATH:-/opt/lampp/htdocs/monas/nwp-verify}"
-REPO="${REPO:-$(dirname "$0")}"
-
-echo "=== Deploy ke litbangweb: $DEPLOY_PATH ==="
-
-ssh -p 3346 litbangweb@202.90.199.54 "mkdir -p $DEPLOY_PATH"
-
-rsync -avz -e "ssh -p 3346" \
-  --exclude '.git' --exclude 'data/' --exclude '.env' --exclude '__pycache__' \
-  "$REPO/" litbangweb@202.90.199.54:"$DEPLOY_PATH/"
-
-ssh -p 3346 litbangweb@202.90.199.54 << REMOTE
-cd $DEPLOY_PATH
-cp -n .env.example .env 2>/dev/null || true
-
-# Path NC langsung dari server (TIDAK perlu upload)
-cat >> .env << 'ENV'
-
-# Auto-read NC dari wrfout (sama seperti psiidn)
-INANWP_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
-INACAWO_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
-GFS_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
-IFS_NC_PATH=/opt/lampp/htdocs/wrf/wrfout
-OFFLINE_OBS_MODE=true
-LITBANGWEB_OBS_DIR=/opt/lampp/htdocs/wrf/monas_obs
-FORCE_PIPELINE=true
-SEED_DEMO_DATA=false
-BMKG_USERNAME=psimkg
-ENV
-
-python3 -m venv .venv 2>/dev/null || true
-.venv/bin/pip install -q -r requirements.txt
-
-# systemd service (optional)
-echo "Jalankan: cd $DEPLOY_PATH && ./start.sh"
-REMOTE
-
-echo "=== Selesai. Dashboard akan baca NC langsung dari /opt/lampp/htdocs/wrf/wrfout/ ==="
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+echo "Lihat panduan lengkap: $SCRIPT_DIR/docs/DEPLOY_LITBANGWEB_WEBPSI.md"
+echo
+echo "Langkah singkat:"
+echo "  1) PC:  scripts/build_compute_image.bat"
+echo "  2) PC:  scp -P 3346 dist/monas-compute.tar litbangweb@202.90.199.54:/home/litbangweb/"
+echo "  3) litbangweb: docker load -i /home/litbangweb/monas-compute.tar"
+echo "  4) litbangweb: bash scripts/install_litbangweb_compute.sh"
+echo "  5) litbangweb: /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh"
+echo "  6) webpsi: SERVE_READONLY + deploy_monas.sh"
