@@ -46,7 +46,7 @@ docker run --rm \
   -e PARALLEL_WORKERS="${PARALLEL_WORKERS:-4}" \
   -e USE_DUMMY_MODELS="${USE_DUMMY_MODELS:-false}" \
   "$IMAGE" \
-  -c 'sed -i "s/\r$//" /app/entrypoint.sh /app/scripts/*.sh 2>/dev/null; exec /bin/bash /app/entrypoint.sh verify'
+  -c 'sed -i "s/\r$//" /app/entrypoint.sh /app/scripts/*.sh 2>/dev/null; python -c "from backend.services.obs_fetcher import init_db; from backend.services.pipeline import init_pipeline_db; init_db(); init_pipeline_db(); print(\"DB init OK\")"; exec /bin/bash /app/entrypoint.sh verify'
 
 ARTIFACT_SRC="$DATA_DIR/artifacts/latest"
 if [ ! -d "$ARTIFACT_SRC" ]; then

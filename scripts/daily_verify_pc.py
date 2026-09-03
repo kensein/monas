@@ -48,7 +48,8 @@ def step_pull_obs(days: int) -> dict:
 
 def step_pull_nc() -> dict:
     log("2/4 Scan / sync NC lokal (InaNWP, InaCAWO, GFS, IFS)...")
-    from backend.services.pipeline import discover_model_runs, register_runs
+    from backend.services.pipeline import discover_model_runs, init_pipeline_db, register_runs
+    init_pipeline_db()
     runs = discover_model_runs()
     n = register_runs(runs)
     by_model: dict[str, int] = {}
@@ -56,6 +57,25 @@ def step_pull_nc() -> dict:
         by_model[r["model"]] = by_model.get(r["model"], 0) + 1
     log(f"   Ditemukan {len(runs)} NC · terdaftar {n} · per model: {by_model}")
     return {"discovered": len(runs), "registered": n, "by_model": by_model}
+
+
+def step_import_obs_offline() -> dict:
+    """Import JSON obs dari folder lokal / mount Docker (tanpa BMKG API)."""
+    log("1/4 Import observasi JSON offline → DB...")
+    from backend.config import LITBANGWEB_OBS_DIR, OBS_EXPORT_DIR
+    from backend.services.obs_fetcher import init_db
+    from backend.services.obs_sync import import_obs_from_json_dir
+    from pathlib import Path
+
+    init_db()
+    candidates = [Path(LITBANGWEB_OBS_DIR), Path(OBS_EXPORT_DIR), Path("/data/obs")]
+    for d in candidates:
+        if d.is_dir() and any(d.glob("*.json")):
+            result = import_obs_from_json_dir(str(d))
+            log(f"   Import dari {d}: {result}")
+            return {"dir": str(d), **(result if isinstance(result, dict) else {"result": result})}
+    log("   WARN: tidak ada folder obs JSON — verifikasi mungkin gagal tanpa observasi")
+    return {"skipped": True, "reason": "no obs json dir"}
 
 
 def step_verify(workers: int | None) -> dict:
@@ -148,6 +168,9 @@ def main() -> int:
     try:
         if not args.skip_obs:
             summary["obs"] = step_pull_obs(args.obs_days)
+        else:
+            # Docker litbangweb: --skip-obs tapi tetap import JSON dari /data/obs
+            summary["obs"] = step_import_obs_offline()
         if not args.skip_nc:
             summary["nc"] = step_pull_nc()
         if not args.skip_verify:
