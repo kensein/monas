@@ -583,7 +583,7 @@ def load_run(model: str, init_time: str) -> RunData | None:
 
 def list_runs(models: list[str] | None = None, init_time: str | None = None) -> list[dict[str, Any]]:
     runs = load_manifest().get("runs", [])
-    if models:
+    if models is not None:
         runs = [r for r in runs if r["model"] in models]
     if init_time:
         tag = init_tag(init_time)

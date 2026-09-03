@@ -18,9 +18,13 @@ const API = (() => {
   return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
 })();
 
-const INIT_LINE_COLORS = [
-  '#2563eb', '#ea580c', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#ca8a04', '#db2777',
-  '#4f46e5', '#0d9488', '#b45309', '#7c3aed',
+const INIT_DASHES = [
+  [],
+  [8, 4],
+  [3, 3],
+  [10, 3, 2, 3],
+  [2, 4],
+  [12, 4, 2, 4, 2, 4],
 ];
 
 const MODEL_COLORS = {
@@ -50,6 +54,14 @@ async function api(path, opts = {}) {
 
 function selectedModels() { return [...document.querySelectorAll('.model-cb:checked')].map(el => el.value); }
 function modelsQuery() { return selectedModels().join(','); }
+function requireModels(emptyHtmlId, emptyMsg) {
+  if (selectedModels().length) return true;
+  if (emptyHtmlId) {
+    const el = document.getElementById(emptyHtmlId);
+    if (el) el.innerHTML = emptyMsg || 'Centang minimal satu model di sidebar.';
+  }
+  return false;
+}
 function selectedInitTime() { return document.getElementById('initCycle').value || ''; }
 
 function formatLeadTime(h) {
@@ -97,8 +109,11 @@ function nearestLeadTime(available, target) {
 async function loadPublicConfig() {
   try {
     const cfg = await api('/api/config/public');
-    cartoApiKey = cfg.carto_api_key || '';
+    cartoApiKey = (cfg.carto_api_key || '').trim();
     if (stationMap) stationMap.setCartoKey(cartoApiKey);
+    if (!cartoApiKey) {
+      console.warn('CARTO_API_KEY kosong — /api/config/public.has_carto_key=', cfg.has_carto_key);
+    }
   } catch (e) {
     console.warn('public config', e);
   }
@@ -308,6 +323,11 @@ async function refreshAll() {
 }
 
 async function loadOverview() {
+  if (!requireModels('rankingCards', '<em>Centang minimal satu model di sidebar.</em>')) {
+    document.getElementById('kpiGrid').innerHTML = '';
+    rankingChart?.setBar({ title: 'Pilih model', yLabel: 'RMSE', labels: ['—'], values: [0], colors: ['#e2e8f0'] });
+    return;
+  }
   const lt = document.getElementById('leadTime').value;
   const init = selectedInitTime();
   const rankQ = `models=${modelsQuery()}&score=rmse${init ? `&init_time=${encodeURIComponent(init)}` : ''}`;
@@ -342,6 +362,10 @@ async function loadOverview() {
 }
 
 async function loadScores() {
+  if (!selectedModels().length) {
+    scoreChart.setLines({ title: 'Centang minimal satu model', xLabel: 'Lead Time (jam)', yLabel: 'RMSE', xNumeric: true, series: [] });
+    return;
+  }
   const param = document.getElementById('parameter').value;
   const data = await api(`/api/verification/scores?${scoresQuery()}`);
   const series = selectedModels().map(m => {
@@ -365,7 +389,8 @@ async function loadScores() {
 }
 
 async function ensureMapBulk() {
-  const model = selectedModels()[0] || 'InaNWP';
+  const model = selectedModels()[0];
+  if (!model) return null;
   const param = document.getElementById('parameter').value;
   const init = selectedInitTime();
   const key = `${model}|${param}|${init}`;
@@ -379,6 +404,11 @@ async function ensureMapBulk() {
 }
 
 function renderMapFromCache() {
+  if (!selectedModels().length) {
+    stationMap?.setStations([]);
+    document.getElementById('mapDetail').textContent = 'Centang minimal satu model di sidebar.';
+    return;
+  }
   if (!mapBulkCache.data) return loadMap();
   if (stationMap) stationMap.invalidateSize();
   const lt = +document.getElementById('leadTime').value;
@@ -422,6 +452,11 @@ function renderMapFromCache() {
 
 async function loadMap() {
   try {
+    if (!selectedModels().length) {
+      stationMap?.setStations([]);
+      document.getElementById('mapDetail').textContent = 'Centang minimal satu model di sidebar.';
+      return;
+    }
     await ensureMapBulk();
     renderMapFromCache();
   } catch (e) {
@@ -486,13 +521,17 @@ function renderStationFromCache() {
       y: obsPts.map(p => (p.obs != null ? p.obs : null)),
     }];
     const inits = (data.inits || []).slice().sort((a, b) => String(b.init_time).localeCompare(String(a.init_time)));
-    inits.forEach((run, i) => {
+    const dashIdxByModel = {};
+    inits.forEach((run) => {
+      const n = dashIdxByModel[run.model] || 0;
+      dashIdxByModel[run.model] = n + 1;
       const pts = downsamplePoints(run.points || [], 200);
       const label = `${run.model} · init ${formatTimeWIB(run.init_time)}`;
       series.push({
         name: label,
-        color: INIT_LINE_COLORS[i % INIT_LINE_COLORS.length],
-        width: 1.5,
+        color: MODEL_COLORS[run.model] || '#00529B',
+        dash: INIT_DASHES[n % INIT_DASHES.length],
+        width: 1.8,
         dotsOnly: false,
         x: pts.map(p => toEpochMs(p.valid_time)),
         y: pts.map(p => (p.fcst != null ? p.fcst : null)),
@@ -530,7 +569,7 @@ function renderStationFromCache() {
     }
 
     let html = `<p class="lt-note">${inits.length} init cycle · ${obsPts.length}+ titik obs · ${flat.length} titik fcst · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
-    html += `<p class="lt-note">${data.note || ''}</p>`;
+    html += `<p class="lt-note">Warna = model. Pola garis = init cycle (solid = terbaru). ${data.note || ''}</p>`;
     html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Valid (WIB)</th><th>Init</th><th>Model</th><th>Lead</th><th>Fcst</th><th>Obs</th><th>Err</th></tr></thead><tbody>';
     const tableRows = flat.slice(-200);
     tableRows.forEach(r => {
@@ -581,6 +620,14 @@ function renderStationFromCache() {
 async function loadStationDetail() {
   const stationId = document.getElementById('stationSelect').value;
   if (!stationId) return;
+  if (!selectedModels().length) {
+    stationChart.setLines({
+      title: 'Centang minimal satu model di sidebar',
+      xLabel: 'Waktu valid (WIB)', yLabel: '', xNumeric: true, xTime: true, series: [],
+    });
+    document.getElementById('stationTable').innerHTML = '<em>Centang minimal satu model di sidebar.</em>';
+    return;
+  }
   const key = `${stationId}|${stationDetailQuery()}`;
   if (stationDetailCache.key !== key) {
     stationDetailCache.data = await api(`/api/station/${stationId}/detail?${stationDetailQuery()}`);

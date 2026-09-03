@@ -20,6 +20,7 @@ module.exports = {
       out_file: "logs/api-out.log",
       merge_logs: true,
       time: true,
+      env_file: ".env",
       env: {
         NODE_ENV: "production",
         PYTHONPATH: ".",

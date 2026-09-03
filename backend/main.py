@@ -278,6 +278,7 @@ def public_config() -> dict[str, Any]:
     """Konfigurasi publik untuk frontend (tanpa secret)."""
     return {
         "carto_api_key": CARTO_API_KEY,
+        "has_carto_key": bool(CARTO_API_KEY),
         "base_path": BASE_PATH,
     }
 

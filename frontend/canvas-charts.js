@@ -194,6 +194,7 @@
     _drawLines() {
       const ctx = this.ctx;
       const plot = this._plot();
+      if (!this.lines?.length) return;
       const allY = [];
       const allX = [];
       this.lines.forEach(s => {
@@ -246,6 +247,7 @@
         ctx.lineWidth = s.width || 2;
         const dotsOnly = this.scatterOnly || s.dotsOnly;
         if (!dotsOnly) {
+          ctx.setLineDash(s.dash || []);
           let started = false;
           ctx.beginPath();
           for (let i = 0; i < s.x.length; i++) {
@@ -257,6 +259,7 @@
             else ctx.lineTo(x, py);
           }
           ctx.stroke();
+          ctx.setLineDash([]);
         }
         for (let i = 0; i < s.x.length; i++) {
           const y = s.y[i];
