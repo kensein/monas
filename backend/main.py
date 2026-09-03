@@ -151,6 +151,21 @@ def pipeline_status() -> dict[str, Any]:
 
 @app.get("/api/pipeline/inventory")
 def pipeline_inventory() -> dict[str, Any]:
+    # webpsi readonly: jangan SFTP ke litbangweb — cukup ringkasan dari f32 store
+    if USE_F32_STORE:
+        runs = hs.load_manifest().get("runs", [])
+        by_model: dict[str, list] = {}
+        for r in runs:
+            by_model.setdefault(r["model"], []).append(r.get("nc_filename") or r.get("init_time"))
+        return {
+            m: {
+                "path": "f32-store",
+                "files": [{"name": n} for n in names],
+                "count": len(names),
+                "local_access": True,
+            }
+            for m, names in by_model.items()
+        } or {m: {"path": "f32-store", "files": [], "count": 0, "local_access": True} for m in MODELS}
     return get_server_model_inventory()
 
 
