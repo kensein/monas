@@ -4,13 +4,16 @@ const BASE_PATH = (() => {
   return '';
 })();
 
+// Path calls are always `/api/...`. Under BASE_PATH=/monas Apache proxies
+// `/monas/api` → `:8013/api`, so the origin prefix must be `/monas` (NOT `/monas/api`)
+// or fetch becomes `/monas/api/api/...` and the dashboard stays blank.
 const API = (() => {
   const { hostname, port } = window.location;
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
     return 'http://localhost:8013';
   }
   if (BASE_PATH) {
-    return `${window.location.origin}${BASE_PATH}/api`;
+    return `${window.location.origin}${BASE_PATH}`;
   }
   return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
 })();
@@ -123,19 +126,30 @@ function initCharts() {
 async function init() {
   initCharts();
   await loadPublicConfig();
-  const data = await api('/api/parameters');
-  paramsMeta = data.verify_parameters;
-  maxLeadTime = data.max_lead_time_hours || 168;
+  try {
+    const data = await api('/api/parameters');
+    paramsMeta = data.verify_parameters || {};
+    maxLeadTime = data.max_lead_time_hours || 168;
 
-  const ltSlider = document.getElementById('leadTime');
-  ltSlider.max = maxLeadTime;
+    const ltSlider = document.getElementById('leadTime');
+    ltSlider.max = maxLeadTime;
 
-  document.getElementById('parameter').innerHTML = Object.entries(paramsMeta).map(([k, v]) =>
-    `<option value="${k}">${v.label} (${v.unit})</option>`).join('');
+    document.getElementById('parameter').innerHTML = Object.entries(paramsMeta).map(([k, v]) =>
+      `<option value="${k}">${v.label} (${v.unit})</option>`).join('');
+  } catch (e) {
+    document.getElementById('pipelineStatus').textContent =
+      `Gagal load /api/parameters (${API}): ${e.message}`;
+    console.error('parameters', e);
+    return;
+  }
 
-  const stations = await api('/api/stations');
-  document.getElementById('stationSelect').innerHTML = stations.map(s =>
-    `<option value="${s.station_id}">${s.station_id} — ${s.name || s.station_id}</option>`).join('');
+  try {
+    const stations = await api('/api/stations');
+    document.getElementById('stationSelect').innerHTML = stations.map(s =>
+      `<option value="${s.station_id}">${s.station_id} — ${s.name || s.station_id}</option>`).join('');
+  } catch (e) {
+    console.warn('stations', e);
+  }
 
   await loadCycles();
   await loadPipelineStatus();
