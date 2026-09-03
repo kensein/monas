@@ -7,16 +7,41 @@ set -euo pipefail
 IMAGE="${IMAGE:-monas-compute:latest}"
 ENV_FILE="${ENV_FILE:-/opt/lampp/htdocs/monas/compute.env}"
 DATA_DIR="${DATA_DIR:-/opt/lampp/htdocs/monas/compute-data}"
-NC_DIR="${NC_DIR:-/opt/lampp/htdocs/wrf/wrfout}"
+NC_DIR="${NC_DIR:-/opt/lampp/htdocs/wrf/monas_nc}"
 OBS_DIR="${OBS_DIR:-/opt/lampp/htdocs/wrf/monas_obs}"
 WEBPSI_HOST="${WEBPSI_HOST:-}"
 WEBPSI_USER="${WEBPSI_USER:-}"
 WEBPSI_PATH="${WEBPSI_PATH:-/var/www/monas/data/artifacts}"
 WEBPSI_SSH_PORT="${WEBPSI_SSH_PORT:-22}"
+# Crop 2D dulu (CDO/ncks di host) lalu HARP baca folder kecil
+RUN_CROP="${RUN_CROP:-true}"
+CROP_SCRIPT="${CROP_SCRIPT:-$(cd "$(dirname "$0")" && pwd)/crop_inanwp_cdo.sh}"
+SRC_NC="${SRC_NC:-/opt/lampp/htdocs/wrf/wrfout}"
 
 mkdir -p "$DATA_DIR" "$(dirname "$DATA_DIR")/logs"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+
+if [ "${RUN_CROP}" = "true" ] || [ "${RUN_CROP}" = "1" ]; then
+  if [ -x "$CROP_SCRIPT" ] || [ -f "$CROP_SCRIPT" ]; then
+    log "Crop CDO/ncks: $SRC_NC → $NC_DIR"
+    SRC_DIR="$SRC_NC" DST_DIR="$NC_DIR" bash "$CROP_SCRIPT"
+  else
+    log "WARN: crop script tidak ada ($CROP_SCRIPT) — harap jalankan crop_inanwp_cdo.sh dulu"
+  fi
+fi
+
+n_nc=0
+shopt -s nullglob
+for f in "$NC_DIR"/*.nc; do
+  [ -f "$f" ] && n_nc=$((n_nc + 1))
+done
+if [ "$n_nc" -eq 0 ]; then
+  log "ERROR: tidak ada NC crop di $NC_DIR — jalankan: $CROP_SCRIPT"
+  log "Jangan mount wrfout 12GB (lambat). Crop dulu ke monas_nc."
+  exit 1
+fi
+log "NC crop siap: $n_nc file di $NC_DIR"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   log "ERROR: image $IMAGE belum di-load. docker load -i monas-compute.tar"

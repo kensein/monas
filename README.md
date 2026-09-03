@@ -1,7 +1,7 @@
 # NWP Verification Dashboard (MONAS)
 
 Dashboard **display-only** — user tidak perlu upload file model.
-Model NC di-sync otomatis dari server **litbangweb** (`/opt/lampp/htdocs/wrf/wrfout/`).
+Model NC di-sync otomatis dari server **litbangweb**. HARP membaca crop 2D di `/opt/lampp/htdocs/wrf/monas_nc/` (bukan wrfout 12GB).
 
 **Produksi PSIMKG:** https://psimkg.bmkg.go.id/monas/ — lihat `DEPLOY_MONAS.md`.
 
@@ -9,10 +9,10 @@ Model NC di-sync otomatis dari server **litbangweb** (`/opt/lampp/htdocs/wrf/wrf
 
 ```
 litbangweb server
-├── /opt/lampp/htdocs/wrf/wrfout/*.nc     ← model auto-update (InaNWP asim, dll)
-├── /var/www/monas/                       ← deploy PSIMKG
-└── pipeline (mingguan / cron):
-    scan NC baru → interpolasi ke stasiun → HARP verify → simpan skor → tampil di UI
+├── /opt/lampp/htdocs/wrf/wrfout/*.nc      ← InaNWP penuh (~12GB, 3D)
+├── /opt/lampp/htdocs/wrf/monas_nc/*.nc    ← crop CDO 2D untuk HARP
+├── /opt/lampp/htdocs/wrf/monas_obs/       ← obs JSON dari PC
+└── Docker monas-compute: HARP dari monas_nc → artifact → webpsi
 ```
 
 User hanya melihat hasil verifikasi HARP: **D+0 (analysis)** sampai **D+7** (168 jam).

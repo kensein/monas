@@ -294,6 +294,36 @@ def read_point_forecast(
             continue
 
         candidates = var_map.get(param, [])
+        rainc_name = rainnc_name = None
+        if param.startswith("rainfall"):
+            rainc_name = _find_var(ds, ["RAINC", "rainc"])
+            rainnc_name = _find_var(ds, ["RAINNC", "rainnc", "tp", "precip"])
+
+        # WRF: hujan total = convectif + grid-scale
+        if rainc_name and rainnc_name:
+            da_c, da_nc = ds[rainc_name], ds[rainnc_name]
+            for li in lead_indices:
+                lt = lead_times[li]
+                valid_time = init_time + timedelta(hours=lt)
+                interp = (
+                    _interp_slice(da_c, time_dim, li, lats, lons, st_lats, st_lons)
+                    + _interp_slice(da_nc, time_dim, li, lats, lons, st_lats, st_lons)
+                )
+                for si in range(len(stations)):
+                    st = stations.iloc[si]
+                    val = _scalar_or_none(interp[si])
+                    if val is not None:
+                        records.append({
+                            "model": model,
+                            "station_id": st["station_id"],
+                            "init_time": init_time.isoformat(),
+                            "lead_time": lt,
+                            "valid_time": normalize_valid_time(valid_time),
+                            "parameter": param,
+                            "fcst": val,
+                        })
+            continue
+
         var_name = _find_var(ds, candidates)
         if not var_name:
             continue
