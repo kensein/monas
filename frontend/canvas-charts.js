@@ -83,7 +83,7 @@
       requestAnimationFrame(() => this.draw());
     }
 
-    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null, xTime = false }) {
+    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null, xTime = false, scatterOnly = false }) {
       this.mode = 'line';
       this.title = title || this.title;
       this.xLabel = xLabel || '';
@@ -91,6 +91,7 @@
       this.xNumeric = xNumeric;
       this.xTime = xTime;
       this.highlightX = highlightX;
+      this.scatterOnly = scatterOnly;
       this.lines = series;
       this.bar = null;
       requestAnimationFrame(() => this.draw());
@@ -243,27 +244,31 @@
         ctx.strokeStyle = s.color;
         ctx.fillStyle = s.color;
         ctx.lineWidth = s.width || 2;
-        let started = false;
-        ctx.beginPath();
-        for (let i = 0; i < s.x.length; i++) {
-          const y = s.y[i];
-          if (y == null || Number.isNaN(y)) { started = false; continue; }
-          const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
-          const py = mapY(y);
-          if (!started) { ctx.moveTo(x, py); started = true; }
-          else ctx.lineTo(x, py);
-          this._meta.push({ type: 'pt', series: s.name, x: s.x[i], y, px: x, py, color: s.color, extra: s.extra?.[i] });
-        }
-        ctx.stroke();
-        const drawDots = s.markers
-          || s.y.filter(y => y != null && !Number.isNaN(y)).length <= 200;
-        if (drawDots) {
+        const dotsOnly = this.scatterOnly || s.dotsOnly;
+        if (!dotsOnly) {
+          let started = false;
+          ctx.beginPath();
           for (let i = 0; i < s.x.length; i++) {
             const y = s.y[i];
-            if (y == null || Number.isNaN(y)) continue;
+            if (y == null || Number.isNaN(y)) { started = false; continue; }
             const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
+            const py = mapY(y);
+            if (!started) { ctx.moveTo(x, py); started = true; }
+            else ctx.lineTo(x, py);
+          }
+          ctx.stroke();
+        }
+        for (let i = 0; i < s.x.length; i++) {
+          const y = s.y[i];
+          if (y == null || Number.isNaN(y)) continue;
+          const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
+          const py = mapY(y);
+          this._meta.push({ type: 'pt', series: s.name, x: s.x[i], y, px: x, py, color: s.color, extra: s.extra?.[i] });
+          const drawDot = dotsOnly || s.markers
+            || s.y.filter(v => v != null && !Number.isNaN(v)).length <= 200;
+          if (drawDot) {
             ctx.beginPath();
-            ctx.arc(x, mapY(y), this.xTime ? 2.5 : 4, 0, Math.PI * 2);
+            ctx.arc(x, py, dotsOnly ? 2 : (this.xTime ? 2.5 : 4), 0, Math.PI * 2);
             ctx.fill();
           }
         }

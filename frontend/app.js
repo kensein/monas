@@ -124,8 +124,8 @@ function initCharts() {
 }
 
 async function init() {
-  initCharts();
   await loadPublicConfig();
+  initCharts();
   try {
     const data = await api('/api/parameters');
     paramsMeta = data.verify_parameters || {};
@@ -473,10 +473,13 @@ function renderStationFromCache() {
   const models = selectedModels();
   const plotRows = downsampleSeries(rows, 800, models);
 
+  // Obs = garis kontinu kuning; model = titik scatter (dots) warna per model.
+  // Gap di model langsung terlihat = area tanpa titik.
   const series = [{
     name: 'Observasi',
     color: MODEL_COLORS.Observasi,
-    width: 2,
+    width: 1.5,
+    dotsOnly: false,
     x: plotRows.map(s => toEpochMs(s.valid_time)),
     y: plotRows.map(s => (s.obs != null ? s.obs : null)),
   }];
@@ -484,8 +487,8 @@ function renderStationFromCache() {
     series.push({
       name: m,
       color: MODEL_COLORS[m] || '#00529B',
-      width: 2,
-      markers: true,
+      width: 1,
+      dotsOnly: true,
       x: plotRows.map(s => toEpochMs(s.valid_time)),
       y: plotRows.map(s => (s[m] != null ? s[m] : null)),
     });
