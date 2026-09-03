@@ -52,20 +52,31 @@ Tidak perlu `--from-june` tiap hari (hemat waktu); full history sudah pernah dii
 
 ---
 
-## B. PC — build Docker image (sekali / saat dependency berubah)
+## B. Build Docker image (PC online **atau** mesin lain)
 
-Di PC **yang ada Docker Desktop + internet**:
+Butuh **Docker**. Di PC Anda sebelumnya error `docker is not recognized` = Docker belum terpasang / belum di PATH.
 
-```bat
-scripts\build_compute_image.bat
+### Opsi B1 — Install Docker Desktop di PC (disarankan)
+1. Install: https://docs.docker.com/desktop/setup/install/windows-install/
+2. Buka **Docker Desktop**, tunggu status Engine running
+3. Tutup + buka ulang PowerShell
+4. Di folder monas:
+   ```bat
+   git pull origin main
+   scripts\build_compute_image.bat
+   scp -P 3346 dist\monas-compute.tar litbangweb@202.90.199.54:/home/litbangweb/
+   ```
+
+### Opsi B2 — Build di webpsi / Linux yang ada Docker + internet
+```bash
+git clone https://github.com/kensein/monas.git && cd monas   # atau git pull
+docker build -f docker/compute/Dockerfile -t monas-compute:latest .
+docker save monas-compute:latest -o monas-compute.tar
+scp -P 3346 monas-compute.tar litbangweb@202.90.199.54:/home/litbangweb/
 ```
 
-Hasil: `dist\monas-compute.tar` (atau `.tar.gz`).
-
-Copy ke litbangweb:
-```bat
-scp -P 3346 dist\monas-compute.tar litbangweb@202.90.199.54:/home/litbangweb/
-```
+### Opsi B3 — Tanpa Docker di PC
+Hanya jalankan **obs harian** di PC (`daily_obs_pc.bat`). Image di-build di mesin B2.
 
 ---
 
