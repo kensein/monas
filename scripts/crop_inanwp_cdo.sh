@@ -9,16 +9,33 @@
 # Compute Docker mount folder itu, bukan wrfout penuh.
 set -euo pipefail
 
+# Jika di-copy dari Windows (CRLF), pola glob jadi *-asim.nc\r → 0 file
+if command -v sed >/dev/null 2>&1 && grep -q $'\r' "$0" 2>/dev/null; then
+  _clean="$(mktemp)"
+  tr -d '\r' <"$0" >"$_clean"
+  chmod +x "$_clean"
+  exec /bin/bash "$_clean" "$@"
+fi
+
 SRC_DIR="${SRC_DIR:-/opt/lampp/htdocs/wrf/wrfout}"
 DST_DIR="${DST_DIR:-/opt/lampp/htdocs/wrf/monas_nc}"
 LOG_DIR="${LOG_DIR:-/opt/lampp/htdocs/monas/logs}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/cdo_crop.log}"
 FORCE="${FORCE:-0}"
-# Rekursif di SRC_DIR. Nama InaNWP di litbangweb sering: *asim.nc / *-asim.nc / wrfout_d01_*
-# Override: GLOB_PATTERNS='*.nc' atau FIND_NAME='*asim*.nc'
+# Rekursif di SRC_DIR. Nama InaNWP di litbangweb: 2026090200-d01-asim.nc
 FIND_MAXDEPTH="${FIND_MAXDEPTH:-4}"
 FIND_NAME="${FIND_NAME:-}"
 GLOB_PATTERNS="${GLOB_PATTERNS:-}"
+
+# Strip CR dari env (kalau di-export dari Windows)
+SRC_DIR="${SRC_DIR//$'\r'/}"
+DST_DIR="${DST_DIR//$'\r'/}"
+LOG_DIR="${LOG_DIR//$'\r'/}"
+LOG_FILE="${LOG_FILE//$'\r'/}"
+FORCE="${FORCE//$'\r'/}"
+FIND_MAXDEPTH="${FIND_MAXDEPTH//$'\r'/}"
+FIND_NAME="${FIND_NAME//$'\r'/}"
+GLOB_PATTERNS="${GLOB_PATTERNS//$'\r'/}"
 
 mkdir -p "$DST_DIR" "$LOG_DIR"
 
@@ -126,10 +143,10 @@ need_crop() {
 
 crop_one() {
   local src="$1"
-  local dest="$DST_DIR/$(basename "$src")"
-  # WRF kadang nama berisi ':' — tetap pakai basename asli
-  dest="${dest%:}"
-
+  local base
+  base="$(basename "$src")"
+  base="${base//$'\r'/}"
+  local dest="$DST_DIR/$base"
   if ! need_crop "$src" "$dest"; then
     local ds ss
     ss=$(stat -c%s "$src" 2>/dev/null || echo 0)
