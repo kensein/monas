@@ -17,6 +17,8 @@ WEBPSI_HOST="${WEBPSI_HOST:-}"
 WEBPSI_USER="${WEBPSI_USER:-}"
 WEBPSI_PATH="${WEBPSI_PATH:-/var/www/monas/data/artifacts}"
 WEBPSI_SSH_PORT="${WEBPSI_SSH_PORT:-22}"
+# Staging SFTP-accessible (pola psiidn_export). webpsi/PC pull via :3346 — jangan andalkan push ke webpsi:22
+EXPORT_DIR="${EXPORT_DIR:-/opt/lampp/htdocs/wrf/monas_export}"
 RUN_CROP="${RUN_CROP:-true}"
 CROP_SCRIPT="${CROP_SCRIPT:-$(cd "$(dirname "$0")" && pwd)/crop_inanwp_cdo.sh}"
 SRC_NC="${SRC_NC:-/opt/lampp/htdocs/wrf/wrfout}"
@@ -147,22 +149,41 @@ if [ ! -f "$STORE_DIR/manifest.json" ]; then
 fi
 log "Store OK: $STORE_DIR ($(du -sh "$STORE_DIR" 2>/dev/null | cut -f1))"
 
-if [ -n "$WEBPSI_HOST" ] && [ -n "$WEBPSI_USER" ]; then
-  log "Sync store → ${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}"
-  ssh -p "$WEBPSI_SSH_PORT" "${WEBPSI_USER}@${WEBPSI_HOST}" "mkdir -p ${WEBPSI_PATH}"
+# Staging untuk pull SFTP (pola PSIIDN). Path di bawah /opt/lampp/htdocs/wrf — user litbangweb biasanya bisa baca.
+if [ -n "$EXPORT_DIR" ]; then
+  mkdir -p "$EXPORT_DIR"
   if command -v rsync >/dev/null 2>&1; then
-    # --delete: run yang di-prune di litbangweb ikut hilang di webpsi
-    rsync -az --delete -e "ssh -p ${WEBPSI_SSH_PORT}" \
+    rsync -a --delete \
       "$STORE_DIR/manifest.json" "$STORE_DIR/runs" "$STORE_DIR/obs" \
-      "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/"
+      "$EXPORT_DIR/"
   else
-    scp -P "$WEBPSI_SSH_PORT" -r "$STORE_DIR/manifest.json" "$STORE_DIR/runs" "$STORE_DIR/obs" \
-      "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/"
+    rm -rf "$EXPORT_DIR/runs" "$EXPORT_DIR/obs"
+    cp -a "$STORE_DIR/manifest.json" "$EXPORT_DIR/"
+    cp -a "$STORE_DIR/runs" "$STORE_DIR/obs" "$EXPORT_DIR/"
   fi
-  # API membaca manifest.json secara live (mtime) — restart tidak wajib
-  log "webpsi sync selesai (API baca manifest baru otomatis)"
+  log "Export staging: $EXPORT_DIR ($(du -sh "$EXPORT_DIR" 2>/dev/null | cut -f1)) — webpsi/PC pull via SFTP :3346"
+  log "  webpsi: ./scripts/pull_artifacts_from_litbangweb.sh"
+  log "  PC hub: scripts\\pull_artifacts_via_pc.bat"
+fi
+
+# Push langsung litbangweb→webpsi sering gagal (timeout :22). Hanya coba jika WEBPSI_* diisi.
+if [ -n "$WEBPSI_HOST" ] && [ -n "$WEBPSI_USER" ]; then
+  log "Coba push → ${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH} (bila timeout, pakai pull SFTP dari webpsi/PC)"
+  if ssh -o ConnectTimeout=8 -p "$WEBPSI_SSH_PORT" "${WEBPSI_USER}@${WEBPSI_HOST}" "mkdir -p ${WEBPSI_PATH}" 2>/dev/null; then
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -az --delete -e "ssh -p ${WEBPSI_SSH_PORT}" \
+        "$STORE_DIR/manifest.json" "$STORE_DIR/runs" "$STORE_DIR/obs" \
+        "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/"
+    else
+      scp -P "$WEBPSI_SSH_PORT" -r "$STORE_DIR/manifest.json" "$STORE_DIR/runs" "$STORE_DIR/obs" \
+        "${WEBPSI_USER}@${WEBPSI_HOST}:${WEBPSI_PATH}/"
+    fi
+    log "webpsi push selesai (API baca manifest baru otomatis)"
+  else
+    log "WARN: push webpsi gagal/timeout — biarkan WEBPSI_HOST kosong; pakai pull: scripts/pull_artifacts_from_litbangweb.sh"
+  fi
 else
-  log "WEBPSI_HOST/USER kosong — sync dilewati. Manual: rsync $STORE_DIR/{manifest.json,runs,obs} → webpsi data/artifacts/"
+  log "WEBPSI_HOST kosong (disarankan). Sync = pull dari webpsi/PC → $EXPORT_DIR"
 fi
 
 log "Selesai"

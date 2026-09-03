@@ -12,9 +12,14 @@
 PC 02:00  fetch obs BMKG (JSON full param) → SFTP → /opt/lampp/htdocs/wrf/monas_obs
 litbangweb 04:00  CDO/ncks crop wrfout 12GB → /opt/lampp/htdocs/wrf/monas_nc (2D, ~300MB)
 litbangweb 04:30  docker monas-compute: interp → obs (param HARP saja) → det_verify
-                  → f32 store (manifest.json + runs/ + obs/) → rsync webpsi
-webpsi  API baca f32 store langsung (tanpa import, tanpa SQLite) → psimkg.bmkg.go.id/monas/
+                  → f32 store + staging /opt/lampp/htdocs/wrf/monas_export/
+webpsi/PC  ~05:00  SFTP pull :3346 dari litbangweb (pola PSIIDN) → /var/www/monas/data/artifacts/
+webpsi  API baca f32 store langsung (tanpa import) → psimkg.bmkg.go.id/monas/
 ```
+
+> **Jaringan:** litbangweb biasanya **tidak** bisa `rsync` push ke `webpsi:22` (timeout).
+> Samakan dengan PSIIDN: **webpsi (atau PC hub) yang pull** via SFTP `202.90.199.54:3346`.
+> Jangan set `WEBPSI_HOST` di litbangweb kecuali push terbukti jalan.
 
 Stack UI **tetap** FastAPI + Canvas (bukan React). Latency diatasi precompute, bukan rewrite frontend.
 
@@ -118,10 +123,8 @@ sudo cp scripts/litbangweb_daily_compute.sh scripts/crop_inanwp_cdo.sh /opt/lamp
 sudo chmod +x /opt/lampp/htdocs/monas/scripts/*.sh
 
 sudo cp docker/compute/env.litbangweb.example /opt/lampp/htdocs/monas/compute.env
-# Edit compute.env — tambah jika sync otomatis ke webpsi:
-#   WEBPSI_HOST=10.21.224.196
-#   WEBPSI_USER=vmhosting
-#   WEBPSI_SSH_PORT=22
+# Jangan set WEBPSI_HOST kecuali litbangweb→webpsi:22 terbukti (sering timeout).
+# Sync = pull dari webpsi/PC (pola PSIIDN) dari /opt/lampp/htdocs/wrf/monas_export
 
 # Atau pakai installer:
 sudo bash scripts/install_litbangweb_compute.sh /home/litbangweb/monas-compute.tar
@@ -155,8 +158,9 @@ docker stop cranky_bardeen   # atau: docker ps  lalu docker stop <id>
 
 ### C1. Uji compute (baca **monas_nc**, bukan wrfout)
 ```bash
-export WEBPSI_HOST=10.21.224.196 WEBPSI_USER=vmhosting   # opsional
+# Jangan set WEBPSI_HOST (push ke :22 sering timeout)
 /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh
+# Staging SFTP: /opt/lampp/htdocs/wrf/monas_export/{manifest.json,runs,obs}
 ```
 
 `RUN_CROP=true` (default): crop dulu jika file baru, lalu Docker HARP v2. Mount:
@@ -209,12 +213,43 @@ git pull origin main
 ```
 
 **Tidak ada langkah import.** API membaca `data/artifacts/manifest.json` + `runs/` + `obs/` langsung
-(cache di memori, refresh otomatis saat `manifest.json` berubah). Sync dari litbangweb:
+(cache di memori, refresh otomatis saat `manifest.json` berubah).
+
+### Sync artifact — pola PSIIDN (pull, bukan push)
+
+litbangweb **stage** ke folder SFTP-accessible setelah compute:
+`/opt/lampp/htdocs/wrf/monas_export/` (= salinan `compute-data/artifacts`).
+
+**Opsi A — dari webpsi** (jika webpsi bisa reach `202.90.199.54:3346`):
 ```bash
-# dijalankan otomatis oleh litbangweb_daily_compute.sh jika WEBPSI_HOST/USER diisi; manual:
-rsync -az --delete /opt/lampp/htdocs/monas/compute-data/artifacts/{manifest.json,runs,obs} \
-  vmhosting@10.21.224.196:/var/www/monas/data/artifacts/
+cd /var/www/monas
+./scripts/pull_artifacts_from_litbangweb.sh
+# butuh SSH key / password untuk user litbangweb
 ```
+
+**Opsi B — hub PC** (paling andal bila webpsi ↔ litbangweb tidak langsung):
+```bat
+REM di PC BMKG (bisa SFTP litbangweb + SSH webpsi)
+set WEBPSI_HOST=10.21.224.196
+set WEBPSI_USER=vmhosting
+scripts\pull_artifacts_via_pc.bat
+```
+
+**Opsi C — manual sekali:**
+```bash
+# litbangweb: pastikan staging ada
+ls /opt/lampp/htdocs/wrf/monas_export/manifest.json
+# atau stage manual sekarang:
+sudo mkdir -p /opt/lampp/htdocs/wrf/monas_export
+sudo rsync -a --delete /opt/lampp/htdocs/monas/compute-data/artifacts/{manifest.json,runs,obs} \
+  /opt/lampp/htdocs/wrf/monas_export/
+
+# PC / webpsi pull:
+scp -P 3346 -r litbangweb@202.90.199.54:/opt/lampp/htdocs/wrf/monas_export/{manifest.json,runs,obs} \
+  /var/www/monas/data/artifacts/
+```
+
+> Jangan `rsync` dari litbangweb ke `10.21.224.196:22` — biasanya **Connection timed out**.
 
 Cek: `curl -s http://127.0.0.1:8013/api/health` → `{"mode":"readonly","store":"f32"}` dan
 `curl -s http://127.0.0.1:8013/api/pipeline/status | head -c 300`.
@@ -229,8 +264,9 @@ Legacy SQLite (`import_artifacts.py`, `dashboard.sqlite`) masih ada untuk `STORE
 |-------|--------|------|
 | 02:00 | PC | `daily_obs_pc.bat` → monas_obs |
 | 04:00 | litbangweb | CDO crop wrfout → monas_nc |
-| 04:30 | litbangweb | Docker HARP v2 (monas_nc) → f32 store → rsync webpsi |
-| ~04:40 | webpsi | API otomatis baca manifest baru (tanpa import/restart) |
+| 04:30 | litbangweb | Docker HARP v2 → f32 store + stage `monas_export` |
+| ~05:00 | webpsi/PC | SFTP pull :3346 (pola PSIIDN) → `data/artifacts/` |
+| ~05:05 | webpsi | API otomatis baca manifest baru (tanpa import/restart) |
 
 ---
 
@@ -308,15 +344,23 @@ crontab -e
 > Overlay **harus** berisi `backend/services/harp_compute.py` + `harp_store.py` + `scripts/harp_compute.py`
 > (dari `main` setelah PR #23). Overlay tidak lengkap → `ModuleNotFoundError` / exit 2 preflight.
 
-Set `WEBPSI_HOST` / `WEBPSI_USER` di `compute.env` agar rsync store ke webpsi otomatis.
+Set `WEBPSI_HOST` hanya jika push litbangweb→webpsi:22 terbukti. Default: staging
+`/opt/lampp/htdocs/wrf/monas_export` + pull dari webpsi/PC.
 
-### 3. webpsi
+### 3. webpsi (setup awal + pull)
 ```bash
-cd /var/www/monas && git pull origin main
-# .env: SERVE_READONLY=true  (STORE_BACKEND default f32)
-pm2 restart monas-api
+# setup sekali — lihat DEPLOY_MONAS.md
+sudo mkdir -p /var/www/monas && sudo chown $USER:$USER /var/www/monas
+git clone https://github.com/kensein/monas.git /var/www/monas
+cd /var/www/monas && cp .env.example .env
+# .env: SERVE_READONLY=true  SEED_DEMO_DATA=false  BASE_PATH=/monas
+./deploy_monas.sh
 mkdir -p data/artifacts
-# store masuk via rsync dari litbangweb (manifest.json, runs/, obs/) — tanpa import
+
+# sync store (pola PSIIDN — pull, bukan push dari litbangweb)
+./scripts/pull_artifacts_from_litbangweb.sh
+# atau dari PC: scripts\pull_artifacts_via_pc.bat
+
 curl -s http://127.0.0.1:8013/api/health          # {"mode":"readonly","store":"f32"}
 curl -s http://127.0.0.1:8013/api/cycles | head -c 300
 ```
