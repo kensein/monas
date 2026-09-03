@@ -183,6 +183,7 @@ main { padding: 1rem; overflow-y: auto; }
 }
 .badge.real { background: #dcfce7; color: var(--good); }
 .badge.dummy { background: #fef3c7; color: var(--warn); }
+.badge.none { background: #e2e8f0; color: #64748b; }
 
 .method-doc {
   background: var(--panel);

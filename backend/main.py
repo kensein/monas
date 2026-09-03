@@ -19,8 +19,10 @@ from backend.config import (
     MODELS,
     SEED_DEMO_DATA,
     SERVE_READONLY,
+    USE_F32_STORE,
     VERIFY_PARAMETERS,
 )
+from backend.services import harp_store as hs
 from backend.services.bmkg_auth import login, token_status
 from backend.services.job_manager import create_job, get_job, run_in_background
 from backend.services.obs_fetcher import (
@@ -66,6 +68,17 @@ class ObsFetchRequest(BaseModel):
 @app.on_event("startup")
 async def startup() -> None:
     import os
+
+    if USE_F32_STORE:
+        m = hs.load_manifest()
+        print(
+            f"[startup] STORE_BACKEND=f32 · {hs.store_root()} · "
+            f"{len(m.get('runs', []))} run · {m.get('n_stations', len(m.get('stations', [])))} stasiun"
+        )
+        if not SERVE_READONLY:
+            print("[startup] compute: python scripts/harp_compute.py (tidak ada scheduler SQLite)")
+        return
+
     init_db()
     init_pipeline_db()
     from backend.services.artifacts import init_station_series_cache
@@ -125,11 +138,14 @@ def health() -> dict[str, str]:
     return {
         "status": "ok",
         "mode": "readonly" if SERVE_READONLY else "nwp-verification",
+        "store": "f32" if USE_F32_STORE else "sqlite",
     }
 
 
 @app.get("/api/pipeline/status")
 def pipeline_status() -> dict[str, Any]:
+    if USE_F32_STORE:
+        return hs.pipeline_status()
     return get_pipeline_status()
 
 
@@ -143,8 +159,22 @@ def pipeline_run() -> dict[str, Any]:
     if SERVE_READONLY:
         raise HTTPException(
             status_code=403,
-            detail="SERVE_READONLY: verifikasi dijalankan di PC/HPC, sync artifact ke webpsi",
+            detail="SERVE_READONLY: verifikasi dijalankan di litbangweb/PC, sync artifact ke webpsi",
         )
+    if USE_F32_STORE:
+        from pathlib import Path
+
+        from backend.config import LITBANGWEB_OBS_DIR, OBS_EXPORT_DIR
+        from backend.services.harp_compute import run_pipeline
+
+        obs_dir = Path(LITBANGWEB_OBS_DIR) if Path(LITBANGWEB_OBS_DIR).is_dir() else Path(OBS_EXPORT_DIR)
+
+        def _job(progress_cb=None):
+            return run_pipeline(obs_json_dir=obs_dir, max_runs=1, log=lambda m: progress_cb and progress_cb(0, m))
+
+        job = create_job("harp_compute")
+        run_in_background(job.id, _job)
+        return {"job_id": job.id, "message": "HARP compute (f32) dijalankan di background"}
     job = create_job("pipeline")
     run_in_background(job.id, run_full_pipeline)
     return {"job_id": job.id, "message": "Pipeline verifikasi HARP dijalankan di background"}
@@ -163,6 +193,9 @@ def job_status(job_id: str) -> dict[str, Any]:
 
 @app.get("/api/cycles")
 def list_cycles(model: str | None = None) -> list[dict]:
+    if USE_F32_STORE:
+        rows = hs.cycles()
+        return [r for r in rows if not model or r["model"] == model]
     return get_available_cycles(model)
 
 
@@ -198,8 +231,17 @@ def harp_methodology() -> dict[str, Any]:
 
 @app.get("/api/models/sources")
 def model_sources() -> dict[str, Any]:
-    from backend.services.dummy_models import get_model_data_sources
     from backend.config import DUMMY_MODELS, USE_DUMMY_MODELS
+
+    if USE_F32_STORE:
+        runs = hs.load_manifest().get("runs", [])
+        present = {r["model"] for r in runs}
+        return {
+            "sources": {m: ("real" if m in present else "none") for m in MODELS},
+            "dummy_models": [],
+            "use_dummy_models": False,
+        }
+    from backend.services.dummy_models import get_model_data_sources
     return {
         "sources": get_model_data_sources(),
         "dummy_models": DUMMY_MODELS,
@@ -229,6 +271,15 @@ def public_config() -> dict[str, Any]:
 def stations_coverage() -> dict[str, Any]:
     """Cek stasiun observasi yang tidak match katalog WMO."""
     from backend.services.station_catalog import load_station_catalog
+
+    if USE_F32_STORE:
+        m = hs.load_manifest()
+        return {
+            "catalog_size": len(load_station_catalog()),
+            "obs_months": m.get("obs_months", []),
+            "n_stations": m.get("n_stations"),
+            "hint": "Store f32: stasiun di luar katalog di-skip saat build cube obs (lihat obs/<bulan>/index.json).",
+        }
     from backend.services.obs_fetcher import get_db
 
     conn = get_db()
@@ -271,6 +322,8 @@ def stations_coverage() -> dict[str, Any]:
 
 @app.get("/api/stations")
 def stations() -> list[dict]:
+    if USE_F32_STORE:
+        return hs.station_frame().to_dict(orient="records")
     return get_stations().to_dict(orient="records")
 
 
@@ -288,10 +341,15 @@ def verification_scores(
     lead_time: int | None = None,
 ) -> dict[str, Any]:
     model_list = [m.strip() for m in models.split(",") if m.strip()]
-    df = load_verification_scores(models=model_list, parameter=parameter, init_time=init_time, lead_time=lead_time)
+    if USE_F32_STORE:
+        df = hs.scores_frame(models=model_list, parameter=parameter, init_time=init_time, lead_time=lead_time)
+        if not df.empty and not init_time:
+            df = hs.aggregate_scores_over_inits(df)
+    else:
+        df = load_verification_scores(models=model_list, parameter=parameter, init_time=init_time, lead_time=lead_time)
 
     if df.empty:
-        raise HTTPException(status_code=404, detail="Belum ada skor verifikasi — tunggu pipeline auto-sync")
+        raise HTTPException(status_code=404, detail="Belum ada skor verifikasi — jalankan HARP compute / sync artifact")
 
     meta = VERIFY_PARAMETERS.get(parameter, {"label": parameter, "unit": "", "category": "continuous"})
     return {"parameter": parameter, "meta": meta, "scores": _scores_to_list(df)}
@@ -303,10 +361,12 @@ def verification_ranking(
     init_time: str | None = None,
     score: str = Query("rmse"),
 ) -> dict[str, Any]:
-    from backend.services.verification_cache import get_or_build_ranking
-
     model_list = [m.strip() for m in models.split(",") if m.strip()]
-    payload = get_or_build_ranking(model_list, init_time=init_time, score=score)
+    if USE_F32_STORE:
+        payload = hs.ranking_payload(model_list, init_time=init_time, score=score)
+    else:
+        from backend.services.verification_cache import get_or_build_ranking
+        payload = get_or_build_ranking(model_list, init_time=init_time, score=score)
     if not payload:
         raise HTTPException(status_code=404, detail="Belum ada data ranking")
     return payload
@@ -319,6 +379,9 @@ def verification_map(
     lead_time: int = Query(12),
     init_time: str | None = None,
 ) -> list[dict]:
+    if USE_F32_STORE:
+        bulk = hs.map_bulk(model, parameter, init_time=init_time)
+        return [r for r in bulk["records"] if r["lead_time"] == int(lead_time)]
     from backend.services.verification_cache import load_verification_station_scores
 
     stats = load_verification_station_scores(model, parameter, lead_time, init_time=init_time)
@@ -336,6 +399,8 @@ def verification_map_bulk(
     init_time: str | None = None,
 ) -> dict[str, Any]:
     """Semua lead time sekaligus — frontend filter saat slider digeser (tanpa round-trip API)."""
+    if USE_F32_STORE:
+        return hs.map_bulk(model, parameter, init_time=init_time)
     from backend.services.verification_cache import load_verification_station_scores_bulk
 
     stats = load_verification_station_scores_bulk(model, parameter, init_time=init_time)
@@ -374,6 +439,24 @@ def station_detail(
     model_list = [m.strip() for m in models.split(",") if m.strip()]
     lt = int(lead_time if lead_time is not None else 12)
     date_from, date_to = window_bounds(months)
+
+    if USE_F32_STORE:
+        st = hs.station_frame()
+        info = st[st["station_id"] == str(station_id)]
+        station_info = info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id}
+        series = hs.station_series(station_id, parameter, model_list, lt, date_from, date_to)
+        return {
+            "station": station_info,
+            "parameter": parameter,
+            "lead_time": lt,
+            "months": months,
+            "date_from": date_from,
+            "date_to": date_to,
+            "archive_start": series_archive_start().strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "series": series,
+            "source": "f32",
+            "note": "Gap pada garis model = tidak ada forecast (model tidak running) pada valid time itu.",
+        }
 
     st = get_stations()
     info = st[st["station_id"] == station_id]

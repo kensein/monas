@@ -43,9 +43,10 @@ HARP_QC = (
 
 HARP_PYTHON_NOTE = (
     "HARP resmi ditulis dalam R (harpPoint, harpIO). MONAS mengimplementasikan alur yang sama "
-    "dalam Python: baca NetCDF → interpolasi scipy → SQLite → join paired → det_verify. "
-    "Output skor (bias, RMSE, MAE, stde, correlation) setara harpPoint; format penyimpanan SQLite "
-    "menggantikan workflow R→SQLite yang dipakai di lingkungan litbangweb."
+    "dalam Python: NetCDF (crop 2D) → interpolasi scipy ke titik stasiun → join paired dengan obs "
+    "→ det_verify. Output skor (bias, RMSE, MAE, stde, correlation) setara harpPoint. "
+    "Hasil disimpan sebagai array float32 + JSON (pola PSIIDN) yang disinkron ke webpsi, "
+    "sehingga dashboard hanya membaca file, tidak menghitung ulang."
 )
 
 def get_methodology() -> dict:
@@ -58,9 +59,9 @@ def get_methodology() -> dict:
         "qc": HARP_QC,
         "python_equivalence": HARP_PYTHON_NOTE,
         "data_sources": {
-            "InaNWP": "NetCDF real (*-asim.nc)",
-            "InaCAWO": "Dummy (derived dari InaNWP) — NC belum tersedia",
-            "GFS": "Dummy (derived dari InaNWP) — NC belum tersedia",
-            "IFS": "Dummy (derived dari InaNWP) — NC belum tersedia",
+            "InaNWP": "NetCDF real (*-asim.nc, crop 2D via CDO/ncks)",
+            "InaCAWO": "NC belum tersedia",
+            "GFS": "NC belum tersedia",
+            "IFS": "NC belum tersedia",
         },
     }

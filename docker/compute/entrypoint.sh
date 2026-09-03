@@ -38,9 +38,17 @@ export OBS_IMPORT_RECENT_DAYS="${OBS_IMPORT_RECENT_DAYS:-14}"
 
 mkdir -p /app/data /app/logs "$ARTIFACTS_DIR"
 
+export STORE_BACKEND="${STORE_BACKEND:-f32}"
+export HARP_STORE_DIR="${HARP_STORE_DIR:-$ARTIFACTS_DIR}"
+export KEEP_RUNS_PER_MODEL="${KEEP_RUNS_PER_MODEL:-0}"
+
 case "$CMD_NAME" in
   verify)
-    echo "[monas-compute] daily verify + export (skip obs fetch, skip remote sync)"
+    echo "[monas-compute] HARP compute v2 → f32 store ($HARP_STORE_DIR) · max_runs=${VERIFY_MAX_RUNS:-1}"
+    exec python -u scripts/harp_compute.py --obs-dir "$LITBANGWEB_OBS_DIR" --max-runs "${VERIFY_MAX_RUNS:-1}" "$@"
+    ;;
+  verify-legacy)
+    echo "[monas-compute] legacy SQLite verify + export"
     exec python scripts/daily_verify_pc.py --skip-obs --skip-sync "$@"
     ;;
   export)

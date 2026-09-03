@@ -9,13 +9,34 @@
 | **webpsi** | Publik/portal | Apache + PM2 · `SERVE_READONLY` · tampilkan dashboard |
 
 ```
-PC 02:00  fetch obs BMKG → SFTP → /opt/lampp/htdocs/wrf/monas_obs
-litbangweb 04:00  CDO/ncks crop wrfout 12GB → /opt/lampp/htdocs/wrf/monas_nc (2D HARP)
-litbangweb 04:30  docker monas-compute (baca monas_nc) → export artifact → SCP webpsi
-webpsi  import artifact → https://psimkg.bmkg.go.id/monas/
+PC 02:00  fetch obs BMKG (JSON full param) → SFTP → /opt/lampp/htdocs/wrf/monas_obs
+litbangweb 04:00  CDO/ncks crop wrfout 12GB → /opt/lampp/htdocs/wrf/monas_nc (2D, ~300MB)
+litbangweb 04:30  docker monas-compute: interp → obs (param HARP saja) → det_verify
+                  → f32 store (manifest.json + runs/ + obs/) → rsync webpsi
+webpsi  API baca f32 store langsung (tanpa import, tanpa SQLite) → psimkg.bmkg.go.id/monas/
 ```
 
 Stack UI **tetap** FastAPI + Canvas (bukan React). Latency diatasi precompute, bukan rewrite frontend.
+
+## Format store (PSIIDN-style, tanpa SQLite)
+
+```
+data/artifacts/                 (webpsi & litbangweb sama)
+├── manifest.json               index run, stasiun, param, exported_at
+├── obs/<YYYYMM>/index.json     axis: station_ids, params, jam dalam bulan
+├── obs/<YYYYMM>/values.f32     float32 [n_jam, n_stasiun, n_param]  (~9 MB/bulan)
+└── runs/<model>/<YYYYMMDDHH>/
+    ├── meta.json               init, lead_times, station_ids, info NC
+    ├── fcst.f32                float32 [n_param, n_lead, n_stasiun]
+    ├── obs.f32                 obs paired pada valid_time (sama shape)
+    └── scores.f32              float32 [n_param, n_lead, 7] bias,rmse,mae,stde,corr,n_cases,n_stations
+```
+
+Satu run ≈ 1–2 MB. HARP (interpolasi, join paired, det_verify, ranking) **tidak berubah** — hanya I/O.
+Obs JSON di litbangweb tetap **full parameter**; filter ke `VERIFY_PARAMETERS` terjadi saat build cube.
+
+Run yang sudah ada di store (nama+ukuran NC sama) **tidak dihitung ulang**. Cube obs per bulan
+di-parse ulang hanya jika file JSON bulan itu berubah.
 
 ---
 
@@ -138,10 +159,27 @@ export WEBPSI_HOST=10.21.224.196 WEBPSI_USER=vmhosting   # opsional
 /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh
 ```
 
-`RUN_CROP=true` (default): crop dulu jika file baru, lalu Docker HARP. Mount:
+`RUN_CROP=true` (default): crop dulu jika file baru, lalu Docker HARP v2. Mount:
 - NC: `/opt/lampp/htdocs/wrf/monas_nc` → `/data/nc`
 - Obs: `/opt/lampp/htdocs/wrf/monas_obs` → `/data/obs`
-- Data: `/opt/lampp/htdocs/monas/compute-data` → `/app/data`
+- Store: `/opt/lampp/htdocs/monas/compute-data/artifacts` → `/app/data/artifacts`
+
+Env penting (`compute.env` atau export sebelum script):
+
+| Var | Default | Arti |
+|-----|---------|------|
+| `VERIFY_MAX_RUNS` | `1` | run terbaru saja; `0` = backfill semua NC di `monas_nc` |
+| `KEEP_RUNS_PER_MODEL` | `0` | prune run lama (mis. `90`); `0` = simpan semua |
+| `HARP_EXTRA_ARGS` | — | `--force` hitung ulang, `--force-obs` parse ulang JSON obs |
+| `CODE_DIR` | — | overlay `backend/`+`scripts/` tanpa rebuild image |
+
+Log yang diharapkan (live):
+```
+1/4 Scan NC crop...         6 NC ditemukan · pending=1
+2/4 Observasi → cube f32    [obs 202609] (1/3) sinoptik_... (28 MB)
+3/4 Verifikasi HARP         [ 45.0%] Param temp_drybulb_c_tttttt (1/14) … det_verify … Tersimpan (…s)
+4/4 Manifest + prune        manifest: N run · store XX MB
+```
 
 ### C2. Cron
 ```cron
@@ -149,7 +187,7 @@ export WEBPSI_HOST=10.21.224.196 WEBPSI_USER=vmhosting   # opsional
 30 4 * * * /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh >> /opt/lampp/htdocs/monas/logs/compute.log 2>&1
 ```
 
-Compute boleh `RUN_CROP=true` (idempotent). Default: `USE_DUMMY_MODELS=false`.
+Backfill sejarah bertahap (malam): `VERIFY_MAX_RUNS=2 …/litbangweb_daily_compute.sh`.
 
 ---
 
@@ -170,12 +208,18 @@ git pull origin main
 # atau: pm2 startOrReload ecosystem.config.cjs
 ```
 
-Import artifact (otomatis dari script litbangweb, atau manual):
+**Tidak ada langkah import.** API membaca `data/artifacts/manifest.json` + `runs/` + `obs/` langsung
+(cache di memori, refresh otomatis saat `manifest.json` berubah). Sync dari litbangweb:
 ```bash
-./scripts/sync_artifacts_to_webpsi.sh /var/www/monas/data/artifacts/latest
+# dijalankan otomatis oleh litbangweb_daily_compute.sh jika WEBPSI_HOST/USER diisi; manual:
+rsync -az --delete /opt/lampp/htdocs/monas/compute-data/artifacts/{manifest.json,runs,obs} \
+  vmhosting@10.21.224.196:/var/www/monas/data/artifacts/
 ```
 
-Cek: `curl -s http://127.0.0.1:8013/api/health` → `"mode":"readonly"`.
+Cek: `curl -s http://127.0.0.1:8013/api/health` → `{"mode":"readonly","store":"f32"}` dan
+`curl -s http://127.0.0.1:8013/api/pipeline/status | head -c 300`.
+
+Legacy SQLite (`import_artifacts.py`, `dashboard.sqlite`) masih ada untuk `STORE_BACKEND=sqlite`, tidak dipakai default.
 
 ---
 
@@ -185,8 +229,8 @@ Cek: `curl -s http://127.0.0.1:8013/api/health` → `"mode":"readonly"`.
 |-------|--------|------|
 | 02:00 | PC | `daily_obs_pc.bat` → monas_obs |
 | 04:00 | litbangweb | CDO crop wrfout → monas_nc |
-| 04:30 | litbangweb | Docker HARP (monas_nc) + export + SCP artifact |
-| ~04:45 | webpsi | import + restart API (dari script) |
+| 04:30 | litbangweb | Docker HARP v2 (monas_nc) → f32 store → rsync webpsi |
+| ~04:40 | webpsi | API otomatis baca manifest baru (tanpa import/restart) |
 
 ---
 
@@ -203,56 +247,71 @@ Rebuild image di PC bila `requirements.txt` berubah, lalu `docker load` ulang di
 ## Langkah sekarang (PC → litbangweb → webpsi)
 
 ### 1. PC lokal
-1. `git pull origin main` (setelah PR ini merge).
-2. Obs harian tetap: Task Scheduler `scripts\daily_obs_pc.bat` jam 02:00. **Tidak perlu** jalankan verify HARP di PC.
-3. Dashboard `localhost:3013` kosong sampai artifact dari litbangweb/webpsi di-import — itu normal.
-4. Copy script baru ke litbangweb (server tanpa git/internet):
-   ```bat
-   scp -P 3346 scripts\crop_inanwp_cdo.sh scripts\litbangweb_daily_compute.sh litbangweb@202.90.199.54:/tmp/
-   ```
-   Opsional overlay Python (hujan RAINC+RAINNC): scp folder `backend\services\nc_reader.py` + `backend\config.py`.
+1. `git pull origin main`.
+2. Obs harian tetap: Task Scheduler `scripts\daily_obs_pc.bat` jam 02:00 (JSON **full parameter** — jangan diubah).
+3. **Tidak perlu** verify HARP di PC.
+4. Kirim kode baru ke litbangweb (tanpa git/internet di server). Dua opsi:
+   - **Overlay (cepat, tanpa rebuild image):**
+     ```bat
+     scp -P 3346 scripts\crop_inanwp_cdo.sh scripts\litbangweb_daily_compute.sh litbangweb@202.90.199.54:/tmp/
+     scp -P 3346 -r backend litbangweb@202.90.199.54:/tmp/backend
+     scp -P 3346 -r scripts litbangweb@202.90.199.54:/tmp/scripts
+     ```
+   - **Rebuild image** (rapi, sekali): `scripts\build_compute_image.bat` → scp tar → `docker load`.
 
 ### 2. litbangweb (`puslitbang`)
 ```bash
-# Hentikan job wrfout 12GB yang masih hidup
-docker ps
-docker stop 0414bf23e925    # ganti id jika beda
+docker ps; docker stop <id_job_lama>   # jika masih ada job SQLite lama
 
-sudo mkdir -p /opt/lampp/htdocs/monas/scripts /opt/lampp/htdocs/monas/logs /opt/lampp/htdocs/wrf/monas_nc
+sudo mkdir -p /opt/lampp/htdocs/monas/{scripts,logs,src} /opt/lampp/htdocs/wrf/monas_nc
 sudo cp /tmp/crop_inanwp_cdo.sh /tmp/litbangweb_daily_compute.sh /opt/lampp/htdocs/monas/scripts/
 sudo sed -i 's/\r$//' /opt/lampp/htdocs/monas/scripts/*.sh
 sudo chmod +x /opt/lampp/htdocs/monas/scripts/*.sh
 
-which cdo; cdo -V | head -1
-which ncks || echo "ncks opsional (lebih ramah WRF)"
+# Overlay kode (jika tidak rebuild image)
+sudo rm -rf /opt/lampp/htdocs/monas/src/backend /opt/lampp/htdocs/monas/src/scripts
+sudo cp -a /tmp/backend /opt/lampp/htdocs/monas/src/backend
+sudo cp -a /tmp/scripts /opt/lampp/htdocs/monas/src/scripts
+sudo find /opt/lampp/htdocs/monas/src \( -name '*.py' -o -name '*.sh' \) -exec sed -i 's/\r$//' {} \;
 
-# Crop sekali — pantau log
+# Store lama (SQLite) tidak dipakai lagi — boleh dipindah
+sudo mv /opt/lampp/htdocs/monas/compute-data/nwp_verify.db /opt/lampp/htdocs/monas/compute-data/nwp_verify.db.bak 2>/dev/null || true
+
+# Crop (skip jika sudah 6 file di monas_nc)
 sudo /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
 ls -lh /opt/lampp/htdocs/wrf/monas_nc/
-tail -f /opt/lampp/htdocs/monas/logs/cdo_crop.log
 
-# HARP dari file crop (cepat)
-sudo /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh
-ls /opt/lampp/htdocs/monas/compute-data/artifacts/latest/
+# HARP v2 — run terbaru
+export CODE_DIR=/opt/lampp/htdocs/monas/src
+export VERIFY_MAX_RUNS=1
+sudo -E /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh
+# SSH lain: tail -f /opt/lampp/htdocs/monas/logs/compute.log
+
+ls -R /opt/lampp/htdocs/monas/compute-data/artifacts | head -30
+cat /opt/lampp/htdocs/monas/compute-data/artifacts/manifest.json | head -40
+
+# Backfill 5 NC lain (malam): VERIFY_MAX_RUNS=0
 
 crontab -e
 # 0 4 * * * /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
-# 30 4 * * * /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh >> /opt/lampp/htdocs/monas/logs/compute.log 2>&1
+# 30 4 * * * CODE_DIR=/opt/lampp/htdocs/monas/src /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh >> /opt/lampp/htdocs/monas/logs/compute.log 2>&1
 ```
 
-Set `WEBPSI_HOST` / `WEBPSI_USER` di `compute.env` jika sync artifact otomatis.
+> Script host **tidak** memakai entrypoint image; ia langsung menjalankan
+> `python scripts/harp_compute.py` di dalam container. Dengan `CODE_DIR` (overlay `backend/` + `scripts/`)
+> image lama pun sudah menjalankan HARP v2 (f32) — rebuild image opsional.
+
+Set `WEBPSI_HOST` / `WEBPSI_USER` di `compute.env` agar rsync store ke webpsi otomatis.
 
 ### 3. webpsi
-Jika script compute sudah SSH ke webpsi: import + `pm2 restart monas-api` otomatis.
-
-Manual:
 ```bash
-cd /var/www/monas
-# .env: SERVE_READONLY=true
-./scripts/sync_artifacts_to_webpsi.sh /var/www/monas/data/artifacts/latest
-# atau: .venv/bin/python scripts/import_artifacts.py --from /var/www/monas/data/artifacts/latest
+cd /var/www/monas && git pull origin main
+# .env: SERVE_READONLY=true  (STORE_BACKEND default f32)
 pm2 restart monas-api
-curl -s http://127.0.0.1:8013/api/health
+mkdir -p data/artifacts
+# store masuk via rsync dari litbangweb (manifest.json, runs/, obs/) — tanpa import
+curl -s http://127.0.0.1:8013/api/health          # {"mode":"readonly","store":"f32"}
+curl -s http://127.0.0.1:8013/api/cycles | head -c 300
 ```
 
 Cek UI: https://psimkg.bmkg.go.id/monas/
@@ -265,6 +324,7 @@ Cek UI: https://psimkg.bmkg.go.id/monas/
 - [ ] PC: pernah `build_compute_image.bat` + copy tar ke litbangweb
 - [ ] litbangweb: `docker images | grep monas-compute`
 - [ ] litbangweb: crop CDO → `ls /opt/lampp/htdocs/wrf/monas_nc/`
-- [ ] litbangweb: cron 04:00 crop + 04:30 `litbangweb_daily_compute.sh`
-- [ ] webpsi: `SERVE_READONLY=true`, PM2 monas-api/web
+- [ ] litbangweb: `compute-data/artifacts/manifest.json` ada, `runs/InaNWP/<init>/scores.f32`
+- [ ] litbangweb: cron 04:00 crop + 04:30 `litbangweb_daily_compute.sh` (CODE_DIR jika overlay)
+- [ ] webpsi: `SERVE_READONLY=true`, PM2 monas-api/web, `data/artifacts/` terisi via rsync
 - [ ] URL: https://psimkg.bmkg.go.id/monas/
