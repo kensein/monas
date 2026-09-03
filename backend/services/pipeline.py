@@ -159,6 +159,11 @@ def register_runs(runs: list[dict]) -> int:
 
 def get_pending_runs() -> pd.DataFrame:
     conn = get_db()
+    # Job yang di-kill sering tertinggal status=processing
+    conn.execute(
+        "UPDATE model_runs SET status='pending' WHERE status='processing'"
+    )
+    conn.commit()
     df = pd.read_sql_query(
         "SELECT * FROM model_runs WHERE status IN ('pending','error') ORDER BY init_time DESC",
         conn,
@@ -283,6 +288,7 @@ def process_model_run(
 ) -> dict[str, Any]:
     """Full HARP pipeline for one model run: read NC → join obs → verify all lead times."""
     def report(p: float, msg: str) -> None:
+        print(f"[pipeline] {model} {init_time}: [{p:5.1f}%] {msg}", flush=True)
         if progress_cb:
             progress_cb(p, msg)
 
@@ -296,7 +302,7 @@ def process_model_run(
 
     try:
         local_path = resolve_model_nc_path(nc_path)
-        report(10, f"Membaca NC: {local_path.name} ({local_path.stat().st_size / 1e9:.2f} GB)")
+        report(10, f"Membaca NC: {local_path.name} ({local_path.stat().st_size / 1e6:.0f} MB)")
 
         ingest_result = ingest_nc_from_path(local_path, model, copy_to_data_dir=False, progress_cb=report)
 
@@ -315,6 +321,7 @@ def process_model_run(
         saved = save_verification_scores(all_scores)
         save_verification_station_scores(station_rows)
         refresh_ranking_cache()
+        report(88, f"Skor tersimpan: {saved} agregat, {len(station_rows)} stasiun")
 
         conn = get_db()
         conn.execute(
@@ -364,7 +371,11 @@ def run_full_pipeline(
     parallel: bool | None = None,
 ) -> dict[str, Any]:
     """Discover → register → process pending runs (opsional paralel per model)."""
+    import os
+
     def report(p: float, msg: str) -> None:
+        line = f"[pipeline] [{p:5.1f}%] {msg}"
+        print(line, flush=True)
         if progress_cb:
             progress_cb(p, msg)
 
@@ -379,6 +390,11 @@ def run_full_pipeline(
     if pending.empty:
         report(100, "Tidak ada run baru — menampilkan hasil terakhir")
         return {"discovered": len(runs), "processed": 0, "message": "Up to date", "inventory": runs}
+
+    max_runs = int(os.getenv("VERIFY_MAX_RUNS", "0") or "0")
+    if max_runs > 0 and len(pending) > max_runs:
+        report(8, f"VERIFY_MAX_RUNS={max_runs}: proses {max_runs}/{len(pending)} run terbaru")
+        pending = pending.head(max_runs)
 
     use_parallel = PARALLEL_VERIFY if parallel is None else parallel
     jobs = [
@@ -415,12 +431,13 @@ def run_full_pipeline(
     else:
         for i, (model, init_time, nc_path) in enumerate(jobs):
             pct = 10 + (i / total) * 85
-            report(pct, f"Verifikasi {model} init {init_time}...")
+            report(pct, f"Verifikasi {model} init {init_time} ({i + 1}/{total})...")
             try:
                 process_model_run(model, init_time, nc_path, progress_cb=report)
                 processed += 1
             except Exception as e:
                 errors.append({"model": model, "init_time": init_time, "error": str(e)})
+                report(pct, f"ERR {model} {init_time}: {e}")
 
     report(100, f"Selesai — {processed} run diproses ({'paralel' if use_parallel and total > 1 else 'serial'})")
     return {

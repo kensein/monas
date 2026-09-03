@@ -79,13 +79,24 @@ def step_import_obs_offline() -> dict:
 
 
 def step_verify(workers: int | None) -> dict:
-    log("3/4 Verifikasi HARP (paralel per model)...")
+    log("3/4 Verifikasi HARP...")
     if workers:
         os.environ["PARALLEL_WORKERS"] = str(workers)
         os.environ["PARALLEL_VERIFY"] = "true"
-    from backend.services.pipeline import init_pipeline_db, run_full_pipeline
+    from backend.services.pipeline import get_pending_runs, init_pipeline_db, run_full_pipeline
     init_pipeline_db()
-    result = run_full_pipeline(parallel=True)
+    pending = get_pending_runs()
+    log(f"   pending runs={len(pending)} (urut init terbaru dulu)")
+    for _, row in pending.head(12).iterrows():
+        log(f"   · {row['model']} {row['init_time']} status={row['status']} nc={row.get('nc_filename')}")
+
+    def progress_cb(pct: float, msg: str) -> None:
+        log(f"   [{pct:5.1f}%] {msg}")
+
+    # Serial = log live tiap param/lead. Set PARALLEL_VERIFY=true untuk paralel (log jarang).
+    parallel = os.getenv("PARALLEL_VERIFY", "false").lower() in ("1", "true", "yes")
+    log(f"   mode={'paralel' if parallel else 'serial (live log)'} PARALLEL_VERIFY={os.getenv('PARALLEL_VERIFY', 'false')}")
+    result = run_full_pipeline(progress_cb=progress_cb, parallel=parallel)
     log(f"   processed={result.get('processed')} errors={len(result.get('errors') or [])} parallel={result.get('parallel')}")
     return result
 

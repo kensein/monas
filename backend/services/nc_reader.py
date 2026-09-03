@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -258,8 +258,15 @@ def read_point_forecast(
     stations: pd.DataFrame,
     parameters: list[str],
     init_time: datetime | None = None,
+    progress_cb: Callable[[float, str], None] | None = None,
 ) -> pd.DataFrame:
     """Extract point forecasts from NetCDF for given stations (lazy read for 12GB+)."""
+    def report(p: float, msg: str) -> None:
+        if progress_cb:
+            progress_cb(p, msg)
+        else:
+            print(f"[nc] [{p:5.1f}%] {msg}", flush=True)
+
     init_time = init_time or parse_init_time(nc_path.name)
     if init_time is None:
         init_time = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
@@ -274,6 +281,7 @@ def read_point_forecast(
             # Tanpa dask: buka tanpa chunk (12GB — butuh RAM cukup atau install dask)
             chunk_kw = {}
 
+    report(42, f"Membuka NetCDF {nc_path.name} ({nc_path.stat().st_size / 1e6:.0f} MB)...")
     try:
         ds = xr.open_dataset(nc_path, engine="netcdf4", **chunk_kw)
     except ImportError:
@@ -289,10 +297,12 @@ def read_point_forecast(
     st_lats = stations["lat"].values
     st_lons = stations["lon"].values
 
-    for param in parameters:
-        if param in ("wind_speed_ff", "wind_dir_deg_dd"):
-            continue
+    scalar_params = [p for p in parameters if p not in ("wind_speed_ff", "wind_dir_deg_dd")]
+    n_params = max(len(scalar_params), 1)
+    report(45, f"Interpolasi {len(stations)} stasiun × {n_params} param × {len(lead_indices)} lead...")
 
+    for pi, param in enumerate(scalar_params):
+        report(45 + (pi / n_params) * 30, f"Param {param} ({pi + 1}/{n_params})")
         candidates = var_map.get(param, [])
         rain_total = rainc_name = rainnc_name = None
         if param.startswith("rainfall"):
@@ -404,11 +414,13 @@ def read_point_forecast(
                         "fcst": val,
                     })
 
+    report(76, "Ekstrak angin (U/V atau ws10/wd10)...")
     records.extend(_extract_wind_at_times(
         ds, model, stations, lats, lons, time_dim, lead_indices, lead_times, init_time,
     ))
 
     ds.close()
+    report(78, f"Interpolasi selesai — {len(records)} records")
     return pd.DataFrame(records)
 
 
