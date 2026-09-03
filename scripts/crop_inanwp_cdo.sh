@@ -14,8 +14,11 @@ DST_DIR="${DST_DIR:-/opt/lampp/htdocs/wrf/monas_nc}"
 LOG_DIR="${LOG_DIR:-/opt/lampp/htdocs/monas/logs}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/cdo_crop.log}"
 FORCE="${FORCE:-0}"
-# Pola file InaNWP di litbangweb: 2026070112-d01-asim.nc
-GLOB_PATTERNS="${GLOB_PATTERNS:-*-asim.nc wrfout_d01_*}"
+# Rekursif di SRC_DIR. Nama InaNWP di litbangweb sering: *asim.nc / *-asim.nc / wrfout_d01_*
+# Override: GLOB_PATTERNS='*.nc' atau FIND_NAME='*asim*.nc'
+FIND_MAXDEPTH="${FIND_MAXDEPTH:-4}"
+FIND_NAME="${FIND_NAME:-}"
+GLOB_PATTERNS="${GLOB_PATTERNS:-}"
 
 mkdir -p "$DST_DIR" "$LOG_DIR"
 
@@ -23,6 +26,36 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 # stdout+stderr → file log (dan tetap ke terminal/cron parent)
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+# Sinkronkan tee sebelum exit (hindari prompt muncul sebelum baris terakhir)
+_finish() {
+  sleep 0.2 2>/dev/null || true
+}
+trap _finish EXIT
+
+list_candidate_nc() {
+  # Cetak path absolut file NC yang mungkin InaNWP (satu path per baris)
+  local depth=(-maxdepth "$FIND_MAXDEPTH")
+  if [ -n "$FIND_NAME" ]; then
+    find "$SRC_DIR" "${depth[@]}" -type f -name "$FIND_NAME" 2>/dev/null | sort -u
+    return
+  fi
+  if [ -n "$GLOB_PATTERNS" ]; then
+    local pat
+    for pat in $GLOB_PATTERNS; do
+      find "$SRC_DIR" "${depth[@]}" -type f -name "$pat" 2>/dev/null
+    done | sort -u
+    return
+  fi
+  # Default: asim + wrfout (bukan hanya *-asim.nc — kadang tanpa strip sebelum asim)
+  {
+    find "$SRC_DIR" "${depth[@]}" -type f \( \
+      -name '*asim*.nc' -o -name '*asim*.NC' -o \
+      -name 'wrfout_d01_*' -o -name 'wrfout_d01_*.nc' -o \
+      -name '*-d01-*.nc' \
+    \) 2>/dev/null
+  } | sort -u
+}
 
 # Variabel 2D WRF / CF yang dipakai HARP (VERIFY_PARAMETERS + angin U/V + rain conv+nc).
 # Jangan ambil 3D (U,V,W,T,P,PH,QVAPOR,QCLOUD,CLDFRA level, dll) — itu sumber 12GB.
@@ -177,29 +210,48 @@ if [ ! -d "$SRC_DIR" ]; then
   exit 1
 fi
 
-shopt -s nullglob
+mapfile -t FILES < <(list_candidate_nc || true)
 count=0
 fail=0
-for pat in $GLOB_PATTERNS; do
-  for f in "$SRC_DIR"/$pat; do
-    [ -f "$f" ] || continue
-    case "$f" in
-      *.tmp|*.tmp.*) continue ;;
-    esac
-    count=$((count + 1))
-    if ! crop_one "$f"; then
-      fail=$((fail + 1))
-    fi
+seen=""
+
+if [ "${#FILES[@]}" -eq 0 ] || [ -z "${FILES[0]:-}" ]; then
+  log "WARN: tidak ada file cocok di $SRC_DIR (rekursif maxdepth=$FIND_MAXDEPTH)"
+  log "Isi level-1 (bantu debug):"
+  ls -lah "$SRC_DIR" 2>/dev/null | head -40 | while read -r line; do log "  $line"; done
+  log "Sample find *.nc (max 20):"
+  find "$SRC_DIR" -maxdepth "$FIND_MAXDEPTH" -type f -name '*.nc' 2>/dev/null | head -20 | while read -r p; do
+    log "  $p ($(stat -c%s "$p" 2>/dev/null || echo '?') bytes)"
   done
+  log "Coba manual: FIND_NAME='*.nc' $0   atau   ls -lah $SRC_DIR"
+  exit 1
+fi
+
+log "Ditemukan ${#FILES[@]} kandidat NC"
+for f in "${FILES[@]}"; do
+  [ -f "$f" ] || continue
+  case "$f" in
+    *.tmp|*.tmp.*) continue ;;
+  esac
+  # Dedup
+  case " $seen " in
+    *" $f "*) continue ;;
+  esac
+  seen="$seen $f"
+  count=$((count + 1))
+  if ! crop_one "$f"; then
+    fail=$((fail + 1))
+  fi
 done
 
 n_out=0
+shopt -s nullglob
 for f in "$DST_DIR"/*.nc; do
   [ -f "$f" ] && n_out=$((n_out + 1))
 done
 log "Selesai: diproses=$count gagal=$fail file_di_dst=$n_out"
 if [ "$count" -eq 0 ]; then
-  log "WARN: tidak ada file cocok di $SRC_DIR (pola: $GLOB_PATTERNS)"
+  log "WARN: tidak ada file diproses"
   exit 1
 fi
 if [ "$fail" -gt 0 ]; then
