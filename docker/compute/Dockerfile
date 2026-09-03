@@ -24,10 +24,14 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY backend /app/backend
 COPY scripts /app/scripts
 COPY docker/compute/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh /app/scripts/*.sh || true
 
-# Persist DB + artifacts via volume mount at /app/data
+# Strip CRLF (Windows builds) so shebang/entrypoint tidak gagal di Linux
+RUN find /app -type f \( -name '*.sh' -o -name 'entrypoint.sh' \) -exec sed -i 's/\r$//' {} \; \
+    && chmod +x /app/entrypoint.sh \
+    && find /app/scripts -name '*.sh' -exec chmod +x {} \;
+
 RUN mkdir -p /app/data/nc /app/data/obs /app/data/artifacts /app/logs
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Invoke via bash (aman meski shebang sempat CRLF)
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
 CMD ["verify"]
