@@ -19,13 +19,14 @@ const API = (() => {
 })();
 
 const INIT_DASHES = [
-  [],
-  [8, 4],
-  [3, 3],
-  [10, 3, 2, 3],
-  [2, 4],
-  [12, 4, 2, 4, 2, 4],
+  [],                 // terbaru: solid
+  [10, 5],
+  [3, 4],
+  [12, 4, 2, 4],
+  [2, 3],
+  [14, 4, 2, 4, 2, 4],
 ];
+const INIT_MARKERS = ['circle', 'square', 'diamond', 'triangle', 'circle', 'square'];
 
 const MODEL_COLORS = {
   Observasi: '#ca8a04',
@@ -159,7 +160,10 @@ function initCharts() {
          r: ${ex.correlation?.toFixed(4)} · N: ${ex.n_cases}`;
     },
   });
-  stationChart = new MonasChart('stationChart');
+  stationChart = new MonasChart('stationChart', { zoomable: true });
+  document.getElementById('chartZoomIn')?.addEventListener('click', () => stationChart.zoomBy(0.7));
+  document.getElementById('chartZoomOut')?.addEventListener('click', () => stationChart.zoomBy(1.35));
+  document.getElementById('chartZoomReset')?.addEventListener('click', () => stationChart.resetZoom());
   stationMap = new StationCanvasMap('leafletMap', {
     cartoKey: cartoApiKey,
     onStationClick(st) {
@@ -570,12 +574,18 @@ function renderStationFromCache() {
       const n = dashIdxByModel[run.model] || 0;
       dashIdxByModel[run.model] = n + 1;
       const pts = downsamplePoints(run.points || [], 200);
-      const label = `${run.model} · init ${formatTimeWIB(run.init_time)}`;
+      // Tooltip: model + init. Legend: nama model saja.
+      const tip = `${run.model} · init ${formatTimeWIB(run.init_time)}`;
       series.push({
-        name: label,
+        name: tip,
+        legendName: run.model,
         color: MODEL_COLORS[run.model] || '#00529B',
         dash: INIT_DASHES[n % INIT_DASHES.length],
-        width: 1.8,
+        marker: INIT_MARKERS[n % INIT_MARKERS.length],
+        // Terbaru lebih tebal & pekat; lama lebih tipis/transparan + dash beda
+        alpha: Math.max(0.4, 1 - n * 0.12),
+        width: n === 0 ? 2.4 : 1.6,
+        markers: true,
         dotsOnly: false,
         x: pts.map(p => toEpochMs(p.valid_time)),
         y: pts.map(p => (p.fcst != null ? p.fcst : null)),
@@ -613,7 +623,7 @@ function renderStationFromCache() {
     }
 
     let html = `<p class="lt-note">${inits.length} init cycle · ${obsPts.length}+ titik obs · ${flat.length} titik fcst · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
-    html += `<p class="lt-note">Warna = model. Pola garis = init cycle (solid = terbaru). ${data.note || ''}</p>`;
+    html += `<p class="lt-note">Warna = model (legend). Bedakan init: <strong>solid+tebal = terbaru</strong>, putus-putus + marker beda (□◇△) = lebih lama. Hover = tanggal init. Scroll/drag = zoom.</p>`;
     html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Valid (WIB)</th><th>Init</th><th>Model</th><th>Lead</th><th>Fcst</th><th>Obs</th><th>Err</th></tr></thead><tbody>';
     const tableRows = flat.slice(-200);
     tableRows.forEach(r => {

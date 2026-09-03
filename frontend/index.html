@@ -94,7 +94,12 @@
             </select>
           </label>
         </div>
-        <p class="hint-chart">Observasi = garis kuning. Warna = model (InaNWP oranye, GFS merah, …). Pola garis (solid/putus) = init cycle berbeda. Area kosong = tidak ada run.</p>
+        <p class="hint-chart">Observasi = kuning. Legend = nama model saja. Init berbeda: solid tebal = terbaru; putus-putus + marker □◇△ = lebih lama (hover untuk tanggal). Scroll = zoom · drag = pan · double-click = reset.</p>
+        <div class="chart-toolbar">
+          <button type="button" id="chartZoomIn" class="chart-zoom-btn" title="Zoom in">＋</button>
+          <button type="button" id="chartZoomOut" class="chart-zoom-btn" title="Zoom out">－</button>
+          <button type="button" id="chartZoomReset" class="chart-zoom-btn" title="Reset zoom">Reset</button>
+        </div>
         <div id="stationChart" class="chart"></div>
         <div id="stationTable" class="detail-box">Tabel pasangan fcst vs obs per valid time.</div>
       </div>
