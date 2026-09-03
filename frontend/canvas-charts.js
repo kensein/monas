@@ -6,6 +6,7 @@
   const MUTED = '#64748b';
 
   function niceTicks(min, max, count = 5) {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [0];
     if (min === max) return [min];
     const range = niceNum(max - min, false);
     const step = niceNum(range / (count - 1), true);
@@ -17,12 +18,30 @@
   }
 
   function niceNum(x, round) {
-    const exp = Math.floor(Math.log10(x));
+    const exp = Math.floor(Math.log10(Math.abs(x) || 1));
     const f = x / 10 ** exp;
     let nf;
     if (round) nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
     else nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
     return nf * 10 ** exp;
+  }
+
+  function hexAlpha(color, a) {
+    if (!color || a >= 0.999) return color;
+    if (color.startsWith('#') && (color.length === 7 || color.length === 4)) {
+      let r; let g; let b;
+      if (color.length === 4) {
+        r = parseInt(color[1] + color[1], 16);
+        g = parseInt(color[2] + color[2], 16);
+        b = parseInt(color[3] + color[3], 16);
+      } else {
+        r = parseInt(color.slice(1, 3), 16);
+        g = parseInt(color.slice(3, 5), 16);
+        b = parseInt(color.slice(5, 7), 16);
+      }
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    return color;
   }
 
   class MonasChart {
@@ -48,11 +67,23 @@
       this.highlightX = null;
       this.hover = null;
       this.onClick = opts.onClick || null;
+      this.zoomable = !!opts.zoomable;
       this._meta = [];
+      this._xFull = null;
+      this._xView = null;
+      this._drag = null;
 
       this.canvas.addEventListener('mousemove', e => this._onMove(e));
-      this.canvas.addEventListener('mouseleave', () => { this.hover = null; this.draw(); });
+      this.canvas.addEventListener('mouseleave', () => {
+        this.hover = null;
+        this._drag = null;
+        this.draw();
+      });
       this.canvas.addEventListener('click', e => this._onClick(e));
+      this.canvas.addEventListener('mousedown', e => this._onDown(e));
+      window.addEventListener('mouseup', () => { this._drag = null; });
+      this.canvas.addEventListener('wheel', e => this._onWheel(e), { passive: false });
+      this.canvas.addEventListener('dblclick', () => { if (this.zoomable) this.resetZoom(); });
 
       this._ro = new ResizeObserver(() => this._resize());
       this._ro.observe(this.el);
@@ -80,10 +111,12 @@
       this.yLabel = yLabel || '';
       this.bar = { labels, values, colors: colors || values.map((_, i) => ['#00529B', '#64748b', '#94a3b8', '#cbd5e1'][i % 4]) };
       this.lines = null;
+      this._xFull = null;
+      this._xView = null;
       requestAnimationFrame(() => this.draw());
     }
 
-    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null, xTime = false, scatterOnly = false }) {
+    setLines({ series, title, xLabel, yLabel, xNumeric = false, highlightX = null, xTime = false, scatterOnly = false, keepZoom = false }) {
       this.mode = 'line';
       this.title = title || this.title;
       this.xLabel = xLabel || '';
@@ -94,11 +127,52 @@
       this.scatterOnly = scatterOnly;
       this.lines = series;
       this.bar = null;
+      const xs = [];
+      (series || []).forEach(s => (s.x || []).forEach(x => {
+        const v = xNumeric ? +x : null;
+        if (v != null && Number.isFinite(v)) xs.push(v);
+      }));
+      if (xs.length) {
+        const lo = Math.min(...xs);
+        const hi = Math.max(...xs);
+        this._xFull = { min: lo, max: hi === lo ? lo + 1 : hi };
+        if (!keepZoom || !this._xView) this._xView = { ...this._xFull };
+        else {
+          this._xView.min = Math.max(this._xFull.min, Math.min(this._xView.min, this._xFull.max));
+          this._xView.max = Math.min(this._xFull.max, Math.max(this._xView.max, this._xFull.min));
+          if (this._xView.max <= this._xView.min) this._xView = { ...this._xFull };
+        }
+      } else {
+        this._xFull = null;
+        this._xView = null;
+      }
       requestAnimationFrame(() => this.draw());
     }
 
     redraw() {
       this._resize();
+    }
+
+    resetZoom() {
+      if (this._xFull) this._xView = { ...this._xFull };
+      this.draw();
+    }
+
+    zoomBy(factor, anchorX = null) {
+      if (!this.zoomable || !this._xView || !this._xFull) return;
+      const plot = this._plot();
+      const { min, max } = this._xView;
+      const span = max - min;
+      const mid = anchorX != null ? anchorX : (min + max) / 2;
+      let newSpan = span * factor;
+      const fullSpan = this._xFull.max - this._xFull.min;
+      newSpan = Math.max(fullSpan * 0.02, Math.min(fullSpan, newSpan));
+      let nmin = mid - (mid - min) / span * newSpan;
+      let nmax = nmin + newSpan;
+      if (nmin < this._xFull.min) { nmin = this._xFull.min; nmax = nmin + newSpan; }
+      if (nmax > this._xFull.max) { nmax = this._xFull.max; nmin = nmax - newSpan; }
+      this._xView = { min: nmin, max: nmax };
+      this.draw();
     }
 
     _plot() {
@@ -191,6 +265,27 @@
       }
     }
 
+    _drawMarker(ctx, x, y, style, r) {
+      ctx.beginPath();
+      if (style === 'square') {
+        ctx.rect(x - r, y - r, r * 2, r * 2);
+      } else if (style === 'diamond') {
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r, y);
+        ctx.closePath();
+      } else if (style === 'triangle') {
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r, y + r);
+        ctx.lineTo(x - r, y + r);
+        ctx.closePath();
+      } else {
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+      }
+      ctx.fill();
+    }
+
     _drawLines() {
       const ctx = this.ctx;
       const plot = this._plot();
@@ -201,11 +296,12 @@
         s.x.forEach(x => allX.push(this.xNumeric ? +x : 0));
         s.y.forEach(y => { if (y != null && !Number.isNaN(y)) allY.push(y); });
       });
+      if (!allY.length) return;
 
-      let minX, maxX, mapX;
+      let minX; let maxX; let mapX;
       if (this.xNumeric) {
-        minX = Math.min(...allX);
-        maxX = Math.max(...allX);
+        minX = this._xView?.min ?? Math.min(...allX);
+        maxX = this._xView?.max ?? Math.max(...allX);
         if (minX === maxX) maxX = minX + 1;
         mapX = v => plot.x0 + ((v - minX) / (maxX - minX)) * plot.w;
       } else {
@@ -242,8 +338,10 @@
       }
 
       this.lines.forEach(s => {
-        ctx.strokeStyle = s.color;
-        ctx.fillStyle = s.color;
+        const alpha = s.alpha != null ? s.alpha : 1;
+        const col = hexAlpha(s.color, alpha);
+        ctx.strokeStyle = col;
+        ctx.fillStyle = col;
         ctx.lineWidth = s.width || 2;
         const dotsOnly = this.scatterOnly || s.dotsOnly;
         if (!dotsOnly) {
@@ -253,7 +351,12 @@
           for (let i = 0; i < s.x.length; i++) {
             const y = s.y[i];
             if (y == null || Number.isNaN(y)) { started = false; continue; }
-            const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
+            const xv = this.xNumeric ? +s.x[i] : s.x[i];
+            if (this.xNumeric && this._xView && (xv < this._xView.min || xv > this._xView.max)) {
+              started = false;
+              continue;
+            }
+            const x = this.xNumeric ? mapX(xv) : mapX(xv);
             const py = mapY(y);
             if (!started) { ctx.moveTo(x, py); started = true; }
             else ctx.lineTo(x, py);
@@ -264,15 +367,18 @@
         for (let i = 0; i < s.x.length; i++) {
           const y = s.y[i];
           if (y == null || Number.isNaN(y)) continue;
-          const x = this.xNumeric ? mapX(+s.x[i]) : mapX(s.x[i]);
+          const xv = this.xNumeric ? +s.x[i] : s.x[i];
+          if (this.xNumeric && this._xView && (xv < this._xView.min || xv > this._xView.max)) continue;
+          const x = this.xNumeric ? mapX(xv) : mapX(xv);
           const py = mapY(y);
-          this._meta.push({ type: 'pt', series: s.name, x: s.x[i], y, px: x, py, color: s.color, extra: s.extra?.[i] });
+          this._meta.push({
+            type: 'pt', series: s.name, x: s.x[i], y, px: x, py, color: col,
+            extra: s.extra?.[i],
+          });
           const drawDot = dotsOnly || s.markers
-            || s.y.filter(v => v != null && !Number.isNaN(v)).length <= 200;
+            || (s.y.filter(v => v != null && !Number.isNaN(v)).length <= 200);
           if (drawDot) {
-            ctx.beginPath();
-            ctx.arc(x, py, dotsOnly ? 2 : (this.xTime ? 2.5 : 4), 0, Math.PI * 2);
-            ctx.fill();
+            this._drawMarker(ctx, x, py, s.marker || 'circle', dotsOnly ? 2 : (this.xTime ? 2.8 : 4));
           }
         }
       });
@@ -314,16 +420,21 @@
         ctx.fillText(this.xLabel, plot.x0 + plot.w / 2, this.h - 8);
       }
 
+      // Legend: dedupe by legendName (default = name) — satu entri per model
       let lx = plot.x0;
       const ly = this.title ? 38 : 12;
+      const seen = new Set();
       this.lines.forEach(s => {
+        const key = s.legendName || s.name;
+        if (seen.has(key)) return;
+        seen.add(key);
         ctx.fillStyle = s.color;
-        ctx.fillRect(lx, ly, 12, 3);
+        ctx.fillRect(lx, ly, 14, 3);
         ctx.fillStyle = TEXT;
         ctx.font = `11px ${FONT}`;
         ctx.textAlign = 'left';
-        ctx.fillText(s.name, lx + 16, ly + 4);
-        lx += ctx.measureText(s.name).width + 36;
+        ctx.fillText(key, lx + 18, ly + 4);
+        lx += ctx.measureText(key).width + 40;
       });
     }
 
@@ -341,18 +452,67 @@
       return best;
     }
 
+    _clientToPlotX(clientX) {
+      const r = this.canvas.getBoundingClientRect();
+      const mx = clientX - r.left;
+      const plot = this._plot();
+      if (!this._xView) return null;
+      const t = (mx - plot.x0) / plot.w;
+      return this._xView.min + t * (this._xView.max - this._xView.min);
+    }
+
+    _onWheel(e) {
+      if (!this.zoomable || this.mode !== 'line' || !this.xNumeric) return;
+      e.preventDefault();
+      const anchor = this._clientToPlotX(e.clientX);
+      const factor = e.deltaY > 0 ? 1.2 : 0.8;
+      this.zoomBy(factor, anchor);
+    }
+
+    _onDown(e) {
+      if (!this.zoomable || this.mode !== 'line' || !this.xNumeric || !this._xView) return;
+      if (e.button !== 0) return;
+      const r = this.canvas.getBoundingClientRect();
+      const mx = e.clientX - r.left;
+      const my = e.clientY - r.top;
+      const plot = this._plot();
+      if (mx < plot.x0 || mx > plot.x0 + plot.w || my < plot.y0 || my > plot.y0 + plot.h) return;
+      this._drag = {
+        x: e.clientX,
+        view: { ...this._xView },
+        span: this._xView.max - this._xView.min,
+      };
+    }
+
     _onMove(e) {
       const r = this.canvas.getBoundingClientRect();
       const mx = e.clientX - r.left;
       const my = e.clientY - r.top;
+
+      if (this._drag && this._xView && this._xFull) {
+        const dx = e.clientX - this._drag.x;
+        const plot = this._plot();
+        const shift = -(dx / plot.w) * this._drag.span;
+        let nmin = this._drag.view.min + shift;
+        let nmax = this._drag.view.max + shift;
+        const span = nmax - nmin;
+        if (nmin < this._xFull.min) { nmin = this._xFull.min; nmax = nmin + span; }
+        if (nmax > this._xFull.max) { nmax = this._xFull.max; nmin = nmax - span; }
+        this._xView = { min: nmin, max: nmax };
+        this.canvas.style.cursor = 'grabbing';
+        this.draw();
+        return;
+      }
+
       const hit = this._pick(mx, my);
       this.hover = hit ? { mx, my, hit } : null;
-      this.canvas.style.cursor = hit ? 'pointer' : 'default';
+      this.canvas.style.cursor = hit ? 'pointer' : (this.zoomable ? 'crosshair' : 'default');
       this.draw();
     }
 
     _onClick(e) {
       if (!this.onClick) return;
+      if (this._drag) return;
       const r = this.canvas.getBoundingClientRect();
       const hit = this._pick(e.clientX - r.left, e.clientY - r.top);
       if (hit) this.onClick(hit);

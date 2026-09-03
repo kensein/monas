@@ -225,7 +225,28 @@ footer.site-footer code { font-size: 0.72rem; background: var(--accent-light); p
 .hint-chart {
   font-size: 0.82rem;
   color: var(--muted);
-  margin: -0.5rem 0 0.75rem;
+  margin: -0.5rem 0 0.5rem;
+}
+
+.chart-toolbar {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+.chart-zoom-btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.chart-zoom-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
 }
 
 @media (max-width: 900px) {
