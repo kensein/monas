@@ -37,7 +37,8 @@ cd /var/www/monas
 git pull
 
 cp .env.example .env
-# Edit: BMKG_PASSWORD, SFTP_PASSWORD, SEED_DEMO_DATA=false
+# Edit: SERVE_READONLY=true, SEED_DEMO_DATA=false, BASE_PATH=/monas
+# Peta: CARTO_API_KEY=...  (lalu pm2 restart monas-api)
 
 chmod +x deploy_monas.sh scripts/*.sh
 ./deploy_monas.sh
