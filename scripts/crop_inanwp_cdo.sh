@@ -174,17 +174,17 @@ crop_one() {
   rm -f "$tmp"
   log "CROP $base  format=$fmt  lev=$LEV_IDX  vars=$vars"
 
-  local ncks_extra=()
+  # Bash 4.3 + set -u: "${arr[@]}" kosong → unbound variable (Ubuntu 16.04)
+  local ncks_cmd=(ncks -O -v "$vars")
   if [ "$LEV_IDX" != "all" ] && has_dim "$src" lev; then
-    ncks_extra+=(-d "lev,$LEV_IDX")
+    ncks_cmd+=(-d "lev,$LEV_IDX")
   fi
 
   if have_cmd ncks; then
-    if ncks -O -v "$vars" "${ncks_extra[@]}" "$src" "$tmp" 2>/tmp/monas_ncks.err; then
+    if "${ncks_cmd[@]}" "$src" "$tmp" 2>/tmp/monas_ncks.err; then
       ok=1
     else
       log "ncks gagal: $(tr '\n' ' ' </tmp/monas_ncks.err | head -c 400)"
-      # Coba tanpa dim yang tidak ada di -v (coord kadang ikut otomatis)
       if ncks -O -v "$vars" "$src" "$tmp" 2>/tmp/monas_ncks2.err; then
         ok=1
         if [ "$LEV_IDX" != "all" ] && has_dim "$tmp" lev; then
