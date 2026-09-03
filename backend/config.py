@@ -65,10 +65,10 @@ LITBANGWEB_OBS_DIR = os.getenv("LITBANGWEB_OBS_DIR", SFTP_OBS_PATH)
 OFFLINE_OBS_MODE = os.getenv("OFFLINE_OBS_MODE", "false").lower() in ("1", "true", "yes")
 
 # Model NC paths on litbangweb server (auto-sync, NO user upload)
-# Dashboard reads directly from these paths when deployed on litbangweb
+# Default InaNWP: hasil crop CDO 2D (`scripts/crop_inanwp_cdo.sh`), bukan wrfout 12GB
 MODEL_LOCAL_PATHS = {
     "InaNWP": {
-        "path": os.getenv("INANWP_NC_PATH", "/opt/lampp/htdocs/wrf/wrfout"),
+        "path": os.getenv("INANWP_NC_PATH", "/opt/lampp/htdocs/wrf/monas_nc"),
         "pattern": "*-asim.nc",
     },
     "InaCAWO": {
@@ -189,14 +189,19 @@ VERIFY_PARAMETERS = {
 MODEL_VAR_MAP = {
     "InaNWP": {
         "temp_drybulb_c_tttttt": ["T2", "t2m", "T2M"],
-        "temp_dewpoint_c_tdtdtd": ["Td2m", "d2m"],
+        "temp_dewpoint_c_tdtdtd": ["Td2m", "d2m", "TD2", "Td2"],
         "relative_humidity_pc": ["RH2", "rh2m", "RH"],
         "pressure_qff_mb_derived": ["MSLP", "mslp", "PSFC", "sp"],
         "pressure_qfe_mb_derived": ["PSFC", "sp"],
+        "pressure_reading_mb": ["PSFC", "sp"],
         "wind_speed_ff": ["WS10", "ws10", "wind_speed"],
         "wind_dir_deg_dd": ["WD10", "wd10"],
-        "rainfall_6h_rrr": ["RAINNC", "rainnc", "tp", "precip"],
-        "cloud_cover_oktas_m": ["TCDC", "tcc", "CLDFRA"],
+        "rainfall_6h_rrr": ["RAINNC", "rainnc", "tp", "precip", "RAINC"],
+        "rainfall_24h_rrrr": ["RAINNC", "rainnc", "tp", "precip", "RAINC"],
+        "rainfall_last_mm": ["RAINNC", "rainnc", "RAINC"],
+        "cloud_cover_oktas_m": ["TCDC", "tcc", "CLDTOT"],
+        "temp_max_c_txtxtx": ["T2MAX", "TMAX", "T2"],
+        "temp_min_c_tntntn": ["T2MIN", "TMIN", "T2"],
     },
     "InaCAWO": {
         "temp_drybulb_c_tttttt": ["T2", "t2m"],

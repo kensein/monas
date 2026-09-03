@@ -10,7 +10,8 @@
 
 ```
 PC 02:00  fetch obs BMKG → SFTP → /opt/lampp/htdocs/wrf/monas_obs
-litbangweb 04:30  docker monas-compute → verify + export → SCP artifact → webpsi
+litbangweb 04:00  CDO/ncks crop wrfout 12GB → /opt/lampp/htdocs/wrf/monas_nc (2D HARP)
+litbangweb 04:30  docker monas-compute (baca monas_nc) → export artifact → SCP webpsi
 webpsi  import artifact → https://psimkg.bmkg.go.id/monas/
 ```
 
@@ -91,8 +92,8 @@ docker load -i /home/litbangweb/monas-compute.tar
 
 # Deploy script + env (dari repo atau copy manual)
 sudo mkdir -p /opt/lampp/htdocs/monas/{scripts,logs,compute-data}
-sudo cp scripts/litbangweb_daily_compute.sh /opt/lampp/htdocs/monas/scripts/
-sudo cp scripts/install_litbangweb_compute.sh /opt/lampp/htdocs/monas/scripts/
+sudo mkdir -p /opt/lampp/htdocs/wrf/monas_nc
+sudo cp scripts/litbangweb_daily_compute.sh scripts/crop_inanwp_cdo.sh /opt/lampp/htdocs/monas/scripts/
 sudo chmod +x /opt/lampp/htdocs/monas/scripts/*.sh
 
 sudo cp docker/compute/env.litbangweb.example /opt/lampp/htdocs/monas/compute.env
@@ -105,23 +106,44 @@ sudo cp docker/compute/env.litbangweb.example /opt/lampp/htdocs/monas/compute.en
 sudo bash scripts/install_litbangweb_compute.sh /home/litbangweb/monas-compute.tar
 ```
 
-### C1. Uji manual
+### C0. Crop CDO (wajib — jangan HARP-kan wrfout 12GB)
+
+File InaNWP di `/opt/lampp/htdocs/wrf/wrfout/*asim.nc` ~12GB karena berisi **3D** (U/V/W/T/QVAPOR/CLDFRA level, dll). HARP hanya butuh **permukaan 2D**. Crop di host (CDO atau ncks) ke:
+
+`/opt/lampp/htdocs/wrf/monas_nc/`  (nama file sama, ukuran biasanya puluhan–ratusan MB)
+
+Variabel yang diambil (yang ada di file): koordinat `XLAT,XLONG,XTIME,Times,HGT` + semua field HARP: `T2,Q2,RH2,PSFC,U10,V10,RAINC,RAINNC,T2MAX,T2MIN,MSLP,TCDC,...` — **bukan** seluruh 3D WRF.
+
+```bash
+# Uji sekali (log: /opt/lampp/htdocs/monas/logs/cdo_crop.log)
+/opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
+ls -lh /opt/lampp/htdocs/wrf/monas_nc/
+# Paksa ulang: FORCE=1 /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
+```
+
+Jika job Docker lama masih baca wrfout 12GB, hentikan dulu:
+```bash
+docker stop cranky_bardeen   # atau: docker ps  lalu docker stop <id>
+```
+
+### C1. Uji compute (baca **monas_nc**, bukan wrfout)
 ```bash
 export WEBPSI_HOST=10.21.224.196 WEBPSI_USER=vmhosting   # opsional
 /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh
 ```
 
-Mount di dalam container:
-- NC: `/opt/lampp/htdocs/wrf/wrfout` → `/data/nc`
+`RUN_CROP=true` (default): crop dulu jika file baru, lalu Docker HARP. Mount:
+- NC: `/opt/lampp/htdocs/wrf/monas_nc` → `/data/nc`
 - Obs: `/opt/lampp/htdocs/wrf/monas_obs` → `/data/obs`
-- Data: `/opt/lampp/htdocs/monas/compute-data` → `/app/data` (SQLite + artifacts)
+- Data: `/opt/lampp/htdocs/monas/compute-data` → `/app/data`
 
-### C2. Cron compute — jam **04:30**
+### C2. Cron
 ```cron
+0 4 * * * /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
 30 4 * * * /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh >> /opt/lampp/htdocs/monas/logs/compute.log 2>&1
 ```
 
-Default: `USE_DUMMY_MODELS=false` (hanya InaNWP real), `PARALLEL_WORKERS=4`.
+Compute boleh `RUN_CROP=true` (idempotent). Default: `USE_DUMMY_MODELS=false`.
 
 ---
 
@@ -156,7 +178,8 @@ Cek: `curl -s http://127.0.0.1:8013/api/health` → `"mode":"readonly"`.
 | Waktu | Mesin | Aksi |
 |-------|--------|------|
 | 02:00 | PC | `daily_obs_pc.bat` → monas_obs |
-| 04:30 | litbangweb | Docker verify + export + SCP artifact |
+| 04:00 | litbangweb | CDO crop wrfout → monas_nc |
+| 04:30 | litbangweb | Docker HARP (monas_nc) + export + SCP artifact |
 | ~04:45 | webpsi | import + restart API (dari script) |
 
 ---
@@ -167,6 +190,67 @@ Host litbangweb **16.04** — jangan `pip install` langsung di host. Semua depen
 
 Rebuild image di PC bila `requirements.txt` berubah, lalu `docker load` ulang di litbangweb.
 
+**Crop CDO tidak butuh rebuild image** — script host + ganti mount ke `monas_nc` cukup. Overlay `backend/` hanya jika ingin penjumlahan `RAINC+RAINNC` di image lama.
+
+---
+
+## Langkah sekarang (PC → litbangweb → webpsi)
+
+### 1. PC lokal
+1. `git pull origin main` (setelah PR ini merge).
+2. Obs harian tetap: Task Scheduler `scripts\daily_obs_pc.bat` jam 02:00. **Tidak perlu** jalankan verify HARP di PC.
+3. Dashboard `localhost:3013` kosong sampai artifact dari litbangweb/webpsi di-import — itu normal.
+4. Copy script baru ke litbangweb (server tanpa git/internet):
+   ```bat
+   scp -P 3346 scripts\crop_inanwp_cdo.sh scripts\litbangweb_daily_compute.sh litbangweb@202.90.199.54:/tmp/
+   ```
+   Opsional overlay Python (hujan RAINC+RAINNC): scp folder `backend\services\nc_reader.py` + `backend\config.py`.
+
+### 2. litbangweb (`puslitbang`)
+```bash
+# Hentikan job wrfout 12GB yang masih hidup
+docker ps
+docker stop 0414bf23e925    # ganti id jika beda
+
+sudo mkdir -p /opt/lampp/htdocs/monas/scripts /opt/lampp/htdocs/monas/logs /opt/lampp/htdocs/wrf/monas_nc
+sudo cp /tmp/crop_inanwp_cdo.sh /tmp/litbangweb_daily_compute.sh /opt/lampp/htdocs/monas/scripts/
+sudo sed -i 's/\r$//' /opt/lampp/htdocs/monas/scripts/*.sh
+sudo chmod +x /opt/lampp/htdocs/monas/scripts/*.sh
+
+which cdo; cdo -V | head -1
+which ncks || echo "ncks opsional (lebih ramah WRF)"
+
+# Crop sekali — pantau log
+sudo /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
+ls -lh /opt/lampp/htdocs/wrf/monas_nc/
+tail -f /opt/lampp/htdocs/monas/logs/cdo_crop.log
+
+# HARP dari file crop (cepat)
+sudo /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh
+ls /opt/lampp/htdocs/monas/compute-data/artifacts/latest/
+
+crontab -e
+# 0 4 * * * /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
+# 30 4 * * * /opt/lampp/htdocs/monas/scripts/litbangweb_daily_compute.sh >> /opt/lampp/htdocs/monas/logs/compute.log 2>&1
+```
+
+Set `WEBPSI_HOST` / `WEBPSI_USER` di `compute.env` jika sync artifact otomatis.
+
+### 3. webpsi
+Jika script compute sudah SSH ke webpsi: import + `pm2 restart monas-api` otomatis.
+
+Manual:
+```bash
+cd /var/www/monas
+# .env: SERVE_READONLY=true
+./scripts/sync_artifacts_to_webpsi.sh /var/www/monas/data/artifacts/latest
+# atau: .venv/bin/python scripts/import_artifacts.py --from /var/www/monas/data/artifacts/latest
+pm2 restart monas-api
+curl -s http://127.0.0.1:8013/api/health
+```
+
+Cek UI: https://psimkg.bmkg.go.id/monas/
+
 ---
 
 ## Checklist
@@ -174,6 +258,7 @@ Rebuild image di PC bila `requirements.txt` berubah, lalu `docker load` ulang di
 - [ ] PC: Task Scheduler 02:00 `daily_obs_pc.bat`
 - [ ] PC: pernah `build_compute_image.bat` + copy tar ke litbangweb
 - [ ] litbangweb: `docker images | grep monas-compute`
-- [ ] litbangweb: cron 04:30 `litbangweb_daily_compute.sh`
+- [ ] litbangweb: crop CDO → `ls /opt/lampp/htdocs/wrf/monas_nc/`
+- [ ] litbangweb: cron 04:00 crop + 04:30 `litbangweb_daily_compute.sh`
 - [ ] webpsi: `SERVE_READONLY=true`, PM2 monas-api/web
 - [ ] URL: https://psimkg.bmkg.go.id/monas/

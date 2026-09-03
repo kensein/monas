@@ -39,18 +39,26 @@ EOF
   echo "Created $ENV_FILE — edit WEBPSI_* jika sync otomatis ke webpsi"
 fi
 
-# Salin script runner jika repo ikut ter-deploy
-SCRIPT_SRC="$(cd "$(dirname "$0")" && pwd)/litbangweb_daily_compute.sh"
-if [ -f "$SCRIPT_SRC" ]; then
-  cp -f "$SCRIPT_SRC" "$MONAS_ROOT/scripts/litbangweb_daily_compute.sh"
-  chmod +x "$MONAS_ROOT/scripts/litbangweb_daily_compute.sh"
-fi
+# Salin script runner + crop CDO
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p /opt/lampp/htdocs/wrf/monas_nc
+for s in litbangweb_daily_compute.sh crop_inanwp_cdo.sh; do
+  if [ -f "$SCRIPT_DIR/$s" ]; then
+    cp -f "$SCRIPT_DIR/$s" "$MONAS_ROOT/scripts/$s"
+    chmod +x "$MONAS_ROOT/scripts/$s"
+  fi
+done
 
 echo
-echo "Uji manual:"
+echo "Uji crop (sekali, ~menit per file 12GB → puluhan–ratusan MB):"
+echo "  $MONAS_ROOT/scripts/crop_inanwp_cdo.sh"
+echo "  ls -lh /opt/lampp/htdocs/wrf/monas_nc/"
+echo
+echo "Uji compute (otomatis crop jika belum):"
 echo "  $MONAS_ROOT/scripts/litbangweb_daily_compute.sh"
 echo
-echo "Cron (setelah obs PC masuk ~02:00, compute ~04:30):"
+echo "Cron (obs PC ~02:00; crop 04:00; HARP 04:30):"
+echo "  0 4 * * * $MONAS_ROOT/scripts/crop_inanwp_cdo.sh"
 echo "  30 4 * * * $MONAS_ROOT/scripts/litbangweb_daily_compute.sh >> $MONAS_ROOT/logs/compute.log 2>&1"
 echo
 docker images | grep monas-compute || true
