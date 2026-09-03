@@ -437,13 +437,12 @@ def station_detail(
     parameter: str = Query("temp_drybulb_c_tttttt"),
     models: str = Query("InaNWP,InaCAWO,GFS,IFS"),
     init_time: str | None = None,
-    lead_time: int | None = Query(12),
+    lead_time: int | None = Query(None),
     months: int = Query(3, ge=1, le=12),
+    series_mode: str = Query("by_init", pattern="^(by_init|by_lead)$"),
 ) -> dict[str, Any]:
-    """Time series kalender (Juni → obs terakhir), window = N bulan terakhir.
-
-    Lead time memilih lapisan forecast; gap pada garis model = model tidak running.
-    """
+    """Time series stasiun: by_init = garis per init cycle (semua lead);
+    by_lead = slice lead time tetap (legacy)."""
     from backend.services.artifacts import (
         build_station_calendar_live,
         load_station_calendar_cache,
@@ -459,10 +458,28 @@ def station_detail(
         st = hs.station_frame()
         info = st[st["station_id"] == str(station_id)]
         station_info = info.to_dict(orient="records")[0] if not info.empty else {"station_id": station_id}
+        if series_mode == "by_init":
+            payload = hs.station_series_by_init(
+                station_id, parameter, model_list, date_from, date_to, init_filter=init_time,
+            )
+            return {
+                "station": station_info,
+                "parameter": parameter,
+                "series_mode": "by_init",
+                "months": months,
+                "date_from": date_from,
+                "date_to": date_to,
+                "archive_start": series_archive_start().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "obs": payload["obs"],
+                "inits": payload["inits"],
+                "source": "f32",
+                "note": "Satu garis per init cycle (D+0→D+7). Bandingkan pola init berbeda; area kosong = tidak ada run.",
+            }
         series = hs.station_series(station_id, parameter, model_list, lt, date_from, date_to)
         return {
             "station": station_info,
             "parameter": parameter,
+            "series_mode": "by_lead",
             "lead_time": lt,
             "months": months,
             "date_from": date_from,

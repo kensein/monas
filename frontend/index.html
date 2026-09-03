@@ -27,7 +27,7 @@
         </select>
       </section>
 
-      <section>
+      <section id="leadTimeSection">
         <h3>Lead Time</h3>
         <input type="range" id="leadTime" min="0" max="168" step="3" value="12" />
         <span id="leadTimeLabel">D+0.5 (12 jam)</span>
@@ -94,7 +94,7 @@
             </select>
           </label>
         </div>
-        <p class="hint-chart">Time series kalender (WIB) sejak Juni / window dipilih. Garis kuning = observasi. Titik warna = model per init cycle. Area kosong = tidak ada pasangan fcst+obs. Slider lead time memilih lapisan forecast.</p>
+        <p class="hint-chart">Observasi = garis kuning (WIB). Setiap init cycle = garis berwarna (D+0→D+7). Bandingkan pola init 1 Sep vs 2 Sep, dll. Area kosong = tidak ada run model.</p>
         <div id="stationChart" class="chart"></div>
         <div id="stationTable" class="detail-box">Tabel pasangan fcst vs obs per valid time.</div>
       </div>

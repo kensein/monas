@@ -779,6 +779,68 @@ def station_series(
     return [entries[k] for k in sorted(entries)]
 
 
+def station_series_by_init(
+    station_id: str,
+    parameter: str,
+    models: list[str],
+    date_from: str,
+    date_to: str,
+    init_filter: str | None = None,
+) -> dict[str, Any]:
+    """Per-init forecast curves (semua lead → valid_time) + obs kalender.
+
+    Satu entry per init cycle = garis time series D+0…D+7 sehingga init berbeda
+    (mis. 1 Sep vs 2 Sep) bisa dibandingkan pola prakiraannya.
+    """
+    start = _parse_dt(date_from)
+    end = _parse_dt(date_to)
+    cube = ObsCube()
+    obs_points: list[dict[str, Any]] = []
+    for vt, val in cube.series(station_id, parameter, start, end):
+        obs_points.append({"valid_time": vt, "obs": val})
+
+    init_runs: list[dict[str, Any]] = []
+    for r in list_runs(models):
+        if init_filter and r["init_time"] != init_filter:
+            continue
+        rd = load_run(r["model"], r["init_time"])
+        if rd is None:
+            continue
+        pi = rd.param_index(parameter)
+        if pi is None:
+            continue
+        try:
+            si = rd.meta["station_ids"].index(str(station_id))
+        except ValueError:
+            continue
+        points: list[dict[str, Any]] = []
+        for li, lt in enumerate(rd.meta["lead_times"]):
+            v = rd.fcst[pi, li, si]
+            if np.isnan(v):
+                continue
+            vt_dt = rd.init_dt + timedelta(hours=int(lt))
+            if vt_dt < start or vt_dt > end:
+                continue
+            ob = rd.obs[pi, li, si]
+            pt: dict[str, Any] = {
+                "valid_time": iso_z(vt_dt),
+                "lead_time": int(lt),
+                "fcst": float(v),
+            }
+            if not np.isnan(ob):
+                pt["obs"] = float(ob)
+            points.append(pt)
+        if points:
+            init_runs.append({
+                "model": r["model"],
+                "init_time": rd.meta["init_time"],
+                "init_tag": rd.meta.get("init_tag") or init_tag(r["init_time"]),
+                "nc_filename": r.get("nc_filename"),
+                "points": sorted(points, key=lambda p: p["valid_time"]),
+            })
+    return {"obs": obs_points, "inits": init_runs}
+
+
 def cycles() -> list[dict[str, Any]]:
     return [
         {

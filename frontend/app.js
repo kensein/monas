@@ -18,6 +18,11 @@ const API = (() => {
   return port ? `${window.location.protocol}//${hostname}:8013` : `http://${hostname}:8013`;
 })();
 
+const INIT_LINE_COLORS = [
+  '#2563eb', '#ea580c', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#ca8a04', '#db2777',
+  '#4f46e5', '#0d9488', '#b45309', '#7c3aed',
+];
+
 const MODEL_COLORS = {
   Observasi: '#ca8a04',
   InaNWP: '#ea580c',
@@ -155,6 +160,7 @@ async function init() {
   await loadPipelineStatus();
   await loadModelSources();
   bindEvents();
+  updateSidebarForTab(document.querySelector('.tab.active')?.dataset.tab || 'overview');
   await refreshAll();
 
   setInterval(loadPipelineStatus, 300000);
@@ -239,12 +245,18 @@ async function loadPipelineStatus() {
   }
 }
 
+function updateSidebarForTab(tab) {
+  const leadSec = document.getElementById('leadTimeSection');
+  if (leadSec) leadSec.style.display = (tab === 'overview' || tab === 'map') ? '' : 'none';
+}
+
 function bindEvents() {
   document.querySelectorAll('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab, .panel').forEach(el => el.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById(btn.dataset.tab).classList.add('active');
+      updateSidebarForTab(btn.dataset.tab);
       refreshAll();
       requestAnimationFrame(() => {
         rankingChart?.redraw();
@@ -264,10 +276,7 @@ function bindEvents() {
     document.getElementById('leadTimeLabel').textContent = formatLeadTime(+document.getElementById('leadTime').value);
     const tab = document.querySelector('.tab.active')?.dataset.tab;
     if (tab === 'map') renderMapFromCache();
-    else if (tab === 'station') {
-      stationDetailCache.key = '';
-      loadStationDetail();
-    } else refreshAll();
+    else if (tab === 'overview') loadOverview();
   });
   document.getElementById('stationRangeMonths')?.addEventListener('change', () => {
     stationDetailCache.key = '';
@@ -437,9 +446,11 @@ async function showStationMapDetail(stationId, param, init) {
 }
 
 function stationDetailQuery() {
-  const lt = document.getElementById('leadTime').value;
   const months = document.getElementById('stationRangeMonths')?.value || 3;
-  return `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}&lead_time=${lt}&months=${months}`;
+  const init = selectedInitTime();
+  let q = `parameter=${document.getElementById('parameter').value}&models=${modelsQuery()}&series_mode=by_init&months=${months}`;
+  if (init) q += `&init_time=${encodeURIComponent(init)}`;
+  return q;
 }
 
 function toEpochMs(isoUtc) {
@@ -449,17 +460,12 @@ function toEpochMs(isoUtc) {
   return Number.isNaN(t) ? null : t;
 }
 
-function downsampleSeries(rows, maxPoints = 800, models = []) {
-  if (rows.length <= maxPoints) return rows;
-  const keep = new Set();
-  // Jangan buang titik yang punya forecast (jarang vs obs jam-jaman)
-  rows.forEach((r, i) => {
-    if (models.some(m => r[m] != null)) keep.add(i);
-  });
-  const step = Math.ceil(rows.length / Math.max(maxPoints - keep.size, 1));
-  for (let i = 0; i < rows.length; i += step) keep.add(i);
-  keep.add(rows.length - 1);
-  return rows.filter((_, i) => keep.has(i));
+function downsamplePoints(points, maxPoints = 400) {
+  if (points.length <= maxPoints) return points;
+  const step = Math.ceil(points.length / maxPoints);
+  const out = points.filter((_, i) => i % step === 0);
+  if (out[out.length - 1] !== points[points.length - 1]) out.push(points[points.length - 1]);
+  return out;
 }
 
 function renderStationFromCache() {
@@ -467,14 +473,82 @@ function renderStationFromCache() {
   if (!data) return loadStationDetail();
   const param = document.getElementById('parameter').value;
   const stationId = document.getElementById('stationSelect').value;
-  const lt = +document.getElementById('leadTime').value;
   const months = +document.getElementById('stationRangeMonths')?.value || 3;
+
+  if (data.series_mode === 'by_init' || data.inits) {
+    const obsPts = downsamplePoints(data.obs || [], 900);
+    const series = [{
+      name: 'Observasi',
+      color: MODEL_COLORS.Observasi,
+      width: 2,
+      dotsOnly: false,
+      x: obsPts.map(p => toEpochMs(p.valid_time)),
+      y: obsPts.map(p => (p.obs != null ? p.obs : null)),
+    }];
+    const inits = (data.inits || []).slice().sort((a, b) => String(b.init_time).localeCompare(String(a.init_time)));
+    inits.forEach((run, i) => {
+      const pts = downsamplePoints(run.points || [], 200);
+      const label = `${run.model} · init ${formatTimeWIB(run.init_time)}`;
+      series.push({
+        name: label,
+        color: INIT_LINE_COLORS[i % INIT_LINE_COLORS.length],
+        width: 1.5,
+        dotsOnly: false,
+        x: pts.map(p => toEpochMs(p.valid_time)),
+        y: pts.map(p => (p.fcst != null ? p.fcst : null)),
+      });
+    });
+
+    stationChart.setLines({
+      title: `${data.station.name || stationId} — ${paramsMeta[param]?.label} · ${months} bln · per init cycle`,
+      xLabel: 'Waktu valid (WIB)',
+      yLabel: paramsMeta[param]?.unit || '',
+      xNumeric: true,
+      xTime: true,
+      series,
+    });
+
+    const flat = [];
+    for (const run of inits) {
+      for (const p of run.points || []) {
+        flat.push({
+          valid_time: p.valid_time,
+          init_time: run.init_time,
+          model: run.model,
+          lead_time: p.lead_time,
+          fcst: p.fcst,
+          obs: p.obs,
+        });
+      }
+    }
+    flat.sort((a, b) => String(a.valid_time).localeCompare(String(b.valid_time)) || String(a.init_time).localeCompare(String(b.init_time)));
+
+    if (!flat.length && !obsPts.length) {
+      document.getElementById('stationTable').innerHTML =
+        `<em>Belum ada data untuk stasiun/parameter ini (window ${months} bulan).</em>`;
+      return;
+    }
+
+    let html = `<p class="lt-note">${inits.length} init cycle · ${obsPts.length}+ titik obs · ${flat.length} titik fcst · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
+    html += `<p class="lt-note">${data.note || ''}</p>`;
+    html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Valid (WIB)</th><th>Init</th><th>Model</th><th>Lead</th><th>Fcst</th><th>Obs</th><th>Err</th></tr></thead><tbody>';
+    const tableRows = flat.slice(-200);
+    tableRows.forEach(r => {
+      const err = r.fcst != null && r.obs != null ? (r.fcst - r.obs).toFixed(2) : '—';
+      html += `<tr><td>${formatTimeDual(r.valid_time)}</td><td>${formatTimeWIB(r.init_time)}</td><td>${r.model}</td>`;
+      html += `<td>${formatLeadTime(r.lead_time)}</td><td>${r.fcst?.toFixed(2) ?? '—'}</td><td>${r.obs?.toFixed(2) ?? '—'}</td><td>${err}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    if (flat.length > 200) html = `<p class="lt-note">200 baris terakhir dari ${flat.length} titik fcst.</p>` + html;
+    document.getElementById('stationTable').innerHTML = html;
+    return;
+  }
+
+  // legacy by_lead (sqlite / fallback)
+  const lt = data.lead_time ?? 12;
   const rows = data.series || [];
   const models = selectedModels();
-  const plotRows = downsampleSeries(rows, 800, models);
-
-  // Obs = garis kontinu kuning; model = titik scatter (dots) warna per model.
-  // Gap di model langsung terlihat = area tanpa titik.
+  const plotRows = rows.length > 800 ? downsamplePoints(rows, 800) : rows;
   const series = [{
     name: 'Observasi',
     color: MODEL_COLORS.Observasi,
@@ -493,7 +567,6 @@ function renderStationFromCache() {
       y: plotRows.map(s => (s[m] != null ? s[m] : null)),
     });
   });
-
   stationChart.setLines({
     title: `${data.station.name || stationId} — ${paramsMeta[param]?.label} · ${months} bln · ${formatLeadTime(lt)}`,
     xLabel: 'Waktu valid (WIB)',
@@ -502,40 +575,7 @@ function renderStationFromCache() {
     xTime: true,
     series,
   });
-
-  if (!rows.length) {
-    document.getElementById('stationTable').innerHTML =
-      `<em>Belum ada data time series untuk stasiun/parameter ini (window ${months} bulan, lead ${formatLeadTime(lt)}).</em>`;
-    return;
-  }
-
-  const withModel = rows.filter(s => models.some(m => s[m] != null));
-  const gaps = rows.filter(s => s.obs != null && !models.some(m => s[m] != null)).length;
-
-  let html = `<p class="lt-note">${rows.length} titik · <strong>${withModel.length} ada forecast</strong> · ~${gaps} obs tanpa model (gap) · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
-  html += `<p class="lt-note">Garis = observasi sinoptik. Titik warna = prakiraan model per init cycle. Area kosong = tidak ada pasangan fcst+obs.</p>`;
-  html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Waktu Valid (WIB)</th><th>Obs</th>';
-  models.forEach(m => { html += `<th>${m}</th><th>Err</th>`; });
-  html += '</tr></thead><tbody>';
-
-  // Utamakan baris yang punya forecast, lalu sisanya (maks ~200)
-  const prefer = withModel.slice(-100);
-  const preferSet = new Set(prefer);
-  const rest = rows.filter(r => !preferSet.has(r)).slice(-(200 - prefer.length));
-  const tableRows = [...prefer, ...rest].sort((a, b) => String(a.valid_time).localeCompare(String(b.valid_time)));
-  tableRows.forEach(s => {
-    const hasModel = models.some(m => s[m] != null);
-    html += `<tr class="${hasModel ? '' : 'row-gap'}">`;
-    html += `<td>${formatTimeDual(s.valid_time)}</td>`;
-    html += `<td>${s.obs?.toFixed(2) ?? '—'}</td>`;
-    models.forEach(m => {
-      const err = s[m] != null && s.obs != null ? (s[m] - s.obs).toFixed(2) : '—';
-      html += `<td>${s[m]?.toFixed(2) ?? '—'}</td><td>${err}</td>`;
-    });
-    html += '</tr>';
-  });
-  html += '</tbody></table></div>';
-  document.getElementById('stationTable').innerHTML = html;
+  document.getElementById('stationTable').innerHTML = `<em>Mode by_lead (legacy).</em>`;
 }
 
 async function loadStationDetail() {
