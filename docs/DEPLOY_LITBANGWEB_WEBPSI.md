@@ -108,17 +108,23 @@ sudo bash scripts/install_litbangweb_compute.sh /home/litbangweb/monas-compute.t
 
 ### C0. Crop CDO (wajib — jangan HARP-kan wrfout 12GB)
 
-File InaNWP di `/opt/lampp/htdocs/wrf/wrfout/*asim.nc` ~12GB karena berisi **3D** (U/V/W/T/QVAPOR/CLDFRA level, dll). HARP hanya butuh **permukaan 2D**. Crop di host (CDO atau ncks) ke:
-
-`/opt/lampp/htdocs/wrf/monas_nc/`  (nama file sama, ukuran biasanya puluhan–ratusan MB)
-
-Variabel yang diambil (yang ada di file): koordinat `XLAT,XLONG,XTIME,Times,HGT` + semua field HARP: `T2,Q2,RH2,PSFC,U10,V10,RAINC,RAINNC,T2MAX,T2MIN,MSLP,TCDC,...` — **bukan** seluruh 3D WRF.
+File InaNWP di litbangweb adalah **`*-d01-asim.nc`** (turunan GrADS/CF: `t2m`,`u10`,`rain`,…), **bukan** wrfout WRF (`T2`,`XLAT`). Semua field punya `lev=19` → crop wajib:
+1. pilih var HARP saja, dan  
+2. `-d lev,0` (permukaan).
 
 ```bash
-# Uji sekali (log: /opt/lampp/htdocs/monas/logs/cdo_crop.log)
+# Uji 1 file (nama var benar)
+SRC=/opt/lampp/htdocs/wrf/wrfout/2026090200-d01-asim.nc
+DST=/opt/lampp/htdocs/wrf/monas_nc/2026090200-d01-asim.nc
+ncks -O -v lat,lon,time,t2m,td2m,rh2m,mslp,pres,u10,v10,ws10,wd10,rain,rainc,rainnc,clflo,clfmi,clfhi \
+  -d lev,0 "$SRC" "$DST"
+ls -lh "$DST"   # target << 1GB (sering ~100–400MB)
+```
+
+Atau script:
+```bash
 /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
 ls -lh /opt/lampp/htdocs/wrf/monas_nc/
-# Paksa ulang: FORCE=1 /opt/lampp/htdocs/monas/scripts/crop_inanwp_cdo.sh
 ```
 
 Jika job Docker lama masih baca wrfout 12GB, hentikan dulu:

@@ -294,12 +294,34 @@ def read_point_forecast(
             continue
 
         candidates = var_map.get(param, [])
-        rainc_name = rainnc_name = None
+        rain_total = rainc_name = rainnc_name = None
         if param.startswith("rainfall"):
+            rain_total = _find_var(ds, ["rain", "tp", "precip", "apcp"])
             rainc_name = _find_var(ds, ["RAINC", "rainc"])
-            rainnc_name = _find_var(ds, ["RAINNC", "rainnc", "tp", "precip"])
+            rainnc_name = _find_var(ds, ["RAINNC", "rainnc"])
 
-        # WRF: hujan total = convectif + grid-scale
+        # InaNWP asim: prefer total rain; else WRF rainc+rainnc
+        if rain_total and param.startswith("rainfall"):
+            da = ds[rain_total]
+            for li in lead_indices:
+                lt = lead_times[li]
+                valid_time = init_time + timedelta(hours=lt)
+                interp = _interp_slice(da, time_dim, li, lats, lons, st_lats, st_lons)
+                for si in range(len(stations)):
+                    st = stations.iloc[si]
+                    val = _scalar_or_none(interp[si])
+                    if val is not None:
+                        records.append({
+                            "model": model,
+                            "station_id": st["station_id"],
+                            "init_time": init_time.isoformat(),
+                            "lead_time": lt,
+                            "valid_time": normalize_valid_time(valid_time),
+                            "parameter": param,
+                            "fcst": val,
+                        })
+            continue
+
         if rainc_name and rainnc_name:
             da_c, da_nc = ds[rainc_name], ds[rainnc_name]
             for li in lead_indices:
@@ -323,6 +345,40 @@ def read_point_forecast(
                             "fcst": val,
                         })
             continue
+
+        # Awan InaNWP: low+mid+high (%) → okta (~ /12.5)
+        if param == "cloud_cover_oktas_m":
+            c_lo = _find_var(ds, ["clflo"])
+            c_mi = _find_var(ds, ["clfmi"])
+            c_hi = _find_var(ds, ["clfhi"])
+            if c_lo or c_mi or c_hi:
+                for li in lead_indices:
+                    lt = lead_times[li]
+                    valid_time = init_time + timedelta(hours=lt)
+                    acc = None
+                    for vn in (c_lo, c_mi, c_hi):
+                        if not vn:
+                            continue
+                        part = _interp_slice(ds[vn], time_dim, li, lats, lons, st_lats, st_lons)
+                        acc = part if acc is None else np.maximum(acc, part)
+                    if acc is None:
+                        continue
+                    # % cloud → okta (0–8)
+                    acc = np.clip(np.asarray(acc, dtype=float) / 12.5, 0.0, 8.0)
+                    for si in range(len(stations)):
+                        st = stations.iloc[si]
+                        val = _scalar_or_none(acc[si])
+                        if val is not None:
+                            records.append({
+                                "model": model,
+                                "station_id": st["station_id"],
+                                "init_time": init_time.isoformat(),
+                                "lead_time": lt,
+                                "valid_time": normalize_valid_time(valid_time),
+                                "parameter": param,
+                                "fcst": val,
+                            })
+                continue
 
         var_name = _find_var(ds, candidates)
         if not var_name:
