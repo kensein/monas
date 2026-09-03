@@ -23,6 +23,8 @@ SRC_NC="${SRC_NC:-/opt/lampp/htdocs/wrf/wrfout}"
 PARALLEL_VERIFY="${PARALLEL_VERIFY:-false}"
 # Harian: 1 run terbaru. Backfill semua: VERIFY_MAX_RUNS=0
 VERIFY_MAX_RUNS="${VERIFY_MAX_RUNS:-1}"
+# Skip arsip bulanan lama (sinoptik_202606… ~380MB). Harian cukup ~14 hari.
+OBS_IMPORT_RECENT_DAYS="${OBS_IMPORT_RECENT_DAYS:-14}"
 # Overlay kode tanpa rebuild: CODE_DIR=/opt/lampp/htdocs/monas/src
 CODE_DIR="${CODE_DIR:-}"
 
