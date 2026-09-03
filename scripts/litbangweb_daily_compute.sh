@@ -29,15 +29,22 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 log "Import obs + verify + export ($IMAGE)"
-# --entrypoint /bin/bash: image yang di-build di Windows bisa punya entrypoint CRLF
-# ("exec user process caused no such file or directory")
+# --entrypoint /bin/bash: image build di Windows bisa punya entrypoint CRLF
+# OPENBLAS_NUM_THREADS=1 + seccomp=unconfined: host Docker lama (Ubuntu 16.04)
 docker run --rm \
   --entrypoint /bin/bash \
+  --security-opt seccomp=unconfined \
   "${ENV_ARGS[@]}" \
   -v "$NC_DIR:/data/nc:ro" \
   -v "$OBS_DIR:/data/obs:ro" \
   -v "$DATA_DIR:/app/data" \
   -e ARTIFACTS_DIR=/app/data/artifacts \
+  -e OPENBLAS_NUM_THREADS=1 \
+  -e OMP_NUM_THREADS=1 \
+  -e MKL_NUM_THREADS=1 \
+  -e NUMEXPR_NUM_THREADS=1 \
+  -e PARALLEL_WORKERS="${PARALLEL_WORKERS:-4}" \
+  -e USE_DUMMY_MODELS="${USE_DUMMY_MODELS:-false}" \
   "$IMAGE" \
   -c 'sed -i "s/\r$//" /app/entrypoint.sh /app/scripts/*.sh 2>/dev/null; exec /bin/bash /app/entrypoint.sh verify'
 
