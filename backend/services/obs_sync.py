@@ -193,11 +193,25 @@ def import_obs_from_json_dir(
     directory: str | Path | None = None,
     pattern: str = "sinoptik_*.json",
     clear_existing: bool = False,
+    recent_days: int | None = None,
 ) -> dict[str, Any]:
-    """Import semua file JSON observasi ke SQLite (untuk litbangweb / pipeline)."""
+    """Import file JSON observasi ke SQLite (untuk litbangweb / pipeline).
+
+    recent_days: jika diisi, skip file yang rentang tanggalnya (dari nama
+    sinoptik_YYYYMMDD_YYYYMMDD_*) berakhir sebelum (hari ini − recent_days).
+    Ini menghindari import 3×~400MB bulanan penuh saat verify harian.
+    """
+    import os
+    import re
+    from datetime import datetime, timedelta
+
     directory = Path(directory or SFTP_OBS_PATH)
     if not directory.is_dir():
         return {"files": 0, "records_saved": 0, "error": f"Folder tidak ada: {directory}"}
+
+    if recent_days is None:
+        raw = os.getenv("OBS_IMPORT_RECENT_DAYS", "").strip()
+        recent_days = int(raw) if raw.isdigit() else 0
 
     if clear_existing:
         from backend.services.obs_fetcher import clear_verification_data
@@ -205,12 +219,36 @@ def import_obs_from_json_dir(
     else:
         cleared = {}
 
+    cutoff = None
+    if recent_days and recent_days > 0:
+        cutoff = (datetime.utcnow() - timedelta(days=recent_days)).strftime("%Y%m%d")
+        print(f"[obs] Filter recent_days={recent_days} (end_date >= {cutoff})", flush=True)
+
     total_saved = 0
     files_loaded = 0
+    files_skipped = 0
     paths = sorted(directory.glob(pattern))
-    n_files = len(paths)
-    print(f"[obs] Import {n_files} file dari {directory} ({pattern})", flush=True)
-    for i, path in enumerate(paths, 1):
+    selected: list[Path] = []
+    for path in paths:
+        if cutoff:
+            m = re.match(r"sinoptik_(\d{8})_(\d{8})", path.name)
+            if m:
+                end = m.group(2)
+                if end < cutoff:
+                    files_skipped += 1
+                    print(f"[obs]   skip lama: {path.name} (end {end} < {cutoff})", flush=True)
+                    continue
+        selected.append(path)
+
+    n_files = len(selected)
+    print(
+        f"[obs] Import {n_files} file dari {directory} "
+        f"(pattern={pattern}, skipped_old={files_skipped})",
+        flush=True,
+    )
+    for i, path in enumerate(selected, 1):
+        size_mb = path.stat().st_size / 1e6
+        print(f"[obs]   [{i}/{n_files}] baca {path.name} ({size_mb:.0f} MB)...", flush=True)
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as e:
@@ -229,7 +267,13 @@ def import_obs_from_json_dir(
         files_loaded += 1
         print(f"[obs]   [{i}/{n_files}] {path.name}: +{n} rows (total {total_saved})", flush=True)
 
-    result = {"files": files_loaded, "records_saved": total_saved, "directory": str(directory)}
+    result = {
+        "files": files_loaded,
+        "records_saved": total_saved,
+        "directory": str(directory),
+        "skipped_old": files_skipped,
+        "recent_days": recent_days or 0,
+    }
     if cleared:
         result["cleared"] = cleared
     print(f"[obs] Selesai: {result}", flush=True)

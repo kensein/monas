@@ -34,6 +34,7 @@ export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
 export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
 # Batasi berapa run pending diproses (kosong/0 = semua). Harian cukup 1–2 terbaru.
 export VERIFY_MAX_RUNS="${VERIFY_MAX_RUNS:-}"
+export OBS_IMPORT_RECENT_DAYS="${OBS_IMPORT_RECENT_DAYS:-14}"
 
 mkdir -p /app/data /app/logs "$ARTIFACTS_DIR"
 

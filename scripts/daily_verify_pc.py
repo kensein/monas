@@ -81,7 +81,10 @@ def step_import_obs_offline() -> dict:
             continue
         sizes = sum(p.stat().st_size for p in files)
         log(f"   Import {len(files)} file dari {d} ({sizes / 1e6:.0f} MB) — ini bisa beberapa menit...")
-        result = import_obs_from_json_dir(str(d))
+        # Harian: OBS_IMPORT_RECENT_DAYS=14 skip arsip bulanan lama (ratusan MB)
+        import os
+        recent = int(os.getenv("OBS_IMPORT_RECENT_DAYS", "14") or "14")
+        result = import_obs_from_json_dir(str(d), recent_days=recent)
         log(f"   Selesai import: {result}")
         return {"dir": str(d), **(result if isinstance(result, dict) else {"result": result})}
     log("   WARN: tidak ada sinoptik_*.json di /data/obs — jalankan daily_obs_pc.bat di PC dulu")
