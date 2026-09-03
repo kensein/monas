@@ -1,13 +1,12 @@
 import os
 from pathlib import Path
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 try:
     from dotenv import load_dotenv
-    load_dotenv(override=True)
+    load_dotenv(BASE_DIR / ".env", override=True)
 except ImportError:
     pass
-
-BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 NC_DIR = DATA_DIR / "nc"
 OBS_DIR = DATA_DIR / "obs"
@@ -45,7 +44,12 @@ LOCAL_NC_PATH = os.getenv("LOCAL_NC_PATH", "").strip().strip('"').strip("'")
 
 # Katalog stasiun BMKG (WMO + lat/lon) — default: data/stations_bmkg.json
 STATION_CATALOG_PATH = os.getenv("STATION_CATALOG_PATH", "")
-CARTO_API_KEY = os.getenv("CARTO_API_KEY", os.getenv("NEXT_PUBLIC_CARTO_API_KEY", ""))
+CARTO_API_KEY = (
+    os.getenv("CARTO_API_KEY", os.getenv("NEXT_PUBLIC_CARTO_API_KEY", ""))
+    .strip()
+    .strip('"')
+    .strip("'")
+)
 NC_CHUNK_THRESHOLD_BYTES = int(os.getenv("NC_CHUNK_THRESHOLD_BYTES", str(500_000_000)))
 
 # BMKG Sinoptik API (v21)

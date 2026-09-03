@@ -63,8 +63,11 @@
     }
 
     setCartoKey(key) {
-      this.cartoKey = key || '';
+      this.cartoKey = (key || '').trim();
       this.tileCache.clear();
+      this.attribution.textContent = this.cartoKey
+        ? '© OSM © CARTO'
+        : '© OSM · CARTO_API_KEY belum terbaca API — cek .env + pm2 restart monas-api';
       this.draw();
     }
 
