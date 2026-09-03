@@ -1,0 +1,14 @@
+.git
+.env
+data/
+logs/
+*.db
+__pycache__/
+*.pyc
+frontend/
+*.md
+.venv/
+node_modules/
+artifacts/
+*.tar
+*.tar.gz

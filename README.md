@@ -69,14 +69,22 @@ Semua kalkulasi verifikasi dijalankan **saat pipeline** (bukan saat buka website
 | `ranking_cache` | Peringkat pre-compute |
 | `station_series_cache` | Time series ringan untuk Detail Stasiun |
 
-Dashboard **hanya membaca cache**. **Flow harian PC→webpsi:** `docs/DAILY_PC_WEBPSI_FLOW.md` (Task Scheduler 03:00, parallel 4 model, artifact sync, `SERVE_READONLY` di webpsi).
+Dashboard **hanya membaca cache**.
+
+**Deploy produksi (disarankan):**
+- PC: fetch obs harian → SFTP litbangweb `monas_obs` (`scripts/daily_obs_pc.bat`)
+- litbangweb: Docker `monas-compute` verify + export (`docs/DEPLOY_LITBANGWEB_WEBPSI.md`)
+- webpsi: `SERVE_READONLY` Apache+PM2 tampilkan artifact
+
+**Flow harian detail:** `docs/DEPLOY_LITBANGWEB_WEBPSI.md` · cadangan PC-only: `docs/DAILY_PC_WEBPSI_FLOW.md`
 
 **Detail Stasiun:** time series kalender (Juni → obs terakhir) dengan dropdown 1–12 bulan; gap pada garis model = model tidak running. Lead time sidebar memilih lapisan forecast.
 
 - Backfill otomatis saat startup jika skor ada tapi cache belum terisi
 - Backfill manual (sekali): `python scripts/rebuild_dashboard_cache.py`
 - Export artifact: `python scripts/export_light_artifacts.py`
-- Daily PC: `scripts/daily_verify_pc.bat`
+- Daily obs PC: `scripts/daily_obs_pc.bat`
+- Build image: `scripts/build_compute_image.bat`
 
 ## Retention (rencana produksi)
 
