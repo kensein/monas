@@ -14,8 +14,10 @@ from backend.config import (
     BASE_PATH,
     CARTO_API_KEY,
     CORS_ORIGIN,
+    INANWP_ASIM_PARAMS,
     LOCAL_NC_PATH,
     MAX_LEAD_TIME_HOURS,
+    MODEL_VAR_MAP,
     MODELS,
     SEED_DEMO_DATA,
     SERVE_READONLY,
@@ -266,8 +268,24 @@ def model_sources() -> dict[str, Any]:
 
 @app.get("/api/parameters")
 def list_parameters() -> dict[str, Any]:
+    available = {
+        m: sorted(MODEL_VAR_MAP.get(m, {}).keys())
+        for m in MODELS
+    }
+    # InaNWP asim: hanya field yang benar-benar di crop NC (bukan sekadar kandidat map)
+    available["InaNWP"] = list(INANWP_ASIM_PARAMS)
+    unavailable_notes = {
+        "InaNWP": {
+            "temp_max_c_txtxtx": "Tidak ada di NC asim (hanya t2m) — jangan samakan dengan suhu 2m",
+            "temp_min_c_tntntn": "Tidak ada di NC asim (hanya t2m)",
+            "temp_wetbulb_c": "Tidak ada field wbpt di NC asim",
+            "visibility_vv": "Tidak ada field visibility di NC asim",
+        },
+    }
     return {
         "verify_parameters": VERIFY_PARAMETERS,
+        "available_by_model": available,
+        "unavailable_notes": unavailable_notes,
         "models": MODELS,
         "max_lead_time_hours": MAX_LEAD_TIME_HOURS,
     }

@@ -37,6 +37,8 @@ const MODEL_COLORS = {
 
 let rankingChart, scoreChart, stationChart, stationMap;
 let paramsMeta = {};
+let paramsAvailableByModel = {};
+let paramsUnavailableNotes = {};
 let maxLeadTime = 168;
 let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy' };
 let cartoApiKey = '';
@@ -61,6 +63,31 @@ function requireModels(emptyHtmlId, emptyMsg) {
     if (el) el.innerHTML = emptyMsg || 'Centang minimal satu model di sidebar.';
   }
   return false;
+}
+
+/** Param tersedia jika ≥1 model tercentang punya field NC-nya (InaNWP asim list). */
+function paramAvailableForSelection(param) {
+  const models = selectedModels();
+  if (!models.length) return true;
+  return models.some(m => (paramsAvailableByModel[m] || []).includes(param));
+}
+
+function refreshParameterOptions() {
+  const sel = document.getElementById('parameter');
+  if (!sel || !Object.keys(paramsMeta).length) return;
+  const prev = sel.value;
+  const notes = paramsUnavailableNotes.InaNWP || {};
+  sel.innerHTML = Object.entries(paramsMeta).map(([k, v]) => {
+    const ok = paramAvailableForSelection(k);
+    const hint = !ok && notes[k] ? ` — tidak di NC` : (!ok ? ' — tidak di NC model' : '');
+    return `<option value="${k}" ${ok ? '' : 'disabled'}>${v.label} (${v.unit})${hint}</option>`;
+  }).join('');
+  if (prev && [...sel.options].some(o => o.value === prev && !o.disabled)) {
+    sel.value = prev;
+  } else {
+    const first = [...sel.options].find(o => !o.disabled);
+    if (first) sel.value = first.value;
+  }
 }
 function selectedInitTime() { return document.getElementById('initCycle').value || ''; }
 
@@ -147,13 +174,14 @@ async function init() {
   try {
     const data = await api('/api/parameters');
     paramsMeta = data.verify_parameters || {};
+    paramsAvailableByModel = data.available_by_model || {};
+    paramsUnavailableNotes = data.unavailable_notes || {};
     maxLeadTime = data.max_lead_time_hours || 168;
 
     const ltSlider = document.getElementById('leadTime');
     ltSlider.max = maxLeadTime;
 
-    document.getElementById('parameter').innerHTML = Object.entries(paramsMeta).map(([k, v]) =>
-      `<option value="${k}">${v.label} (${v.unit})</option>`).join('');
+    refreshParameterOptions();
   } catch (e) {
     document.getElementById('pipelineStatus').textContent =
       `Gagal load /api/parameters (${API}): ${e.message}`;
@@ -192,6 +220,7 @@ async function loadModelSources() {
       // Model tanpa run di store: uncheck agar chart tidak penuh kolom kosong
       if (src === 'none') cb.checked = false;
     });
+    refreshParameterOptions();
   } catch (e) { console.warn('model sources', e); }
 }
 
@@ -298,6 +327,7 @@ function bindEvents() {
   document.querySelectorAll('.model-cb').forEach(cb => cb.addEventListener('change', () => {
     mapBulkCache.key = '';
     stationDetailCache.key = '';
+    refreshParameterOptions();
     refreshAll();
   }));
   document.getElementById('stationSelect').addEventListener('change', () => {
