@@ -212,9 +212,10 @@ VERIFY_PARAMETERS = {
 }
 
 # Model variable mapping for interpolation
+# InaNWP *-d01-asim.nc (crop): hanya t2m/td2m/rh2m/mslp/pres/u10/v10/ws10/wd10/rain*/clf*
+# TIDAK ada T2MAX/T2MIN/wbpt di file asim — jangan fallback ke t2m (nilai palsu identik).
 MODEL_VAR_MAP = {
     "InaNWP": {
-        # litbangweb *-d01-asim.nc: t2m/td2m/rh2m/mslp/u10/v10/rain* (bukan T2/XLAT WRF)
         "temp_drybulb_c_tttttt": ["t2m", "T2", "T2M"],
         "temp_dewpoint_c_tdtdtd": ["td2m", "Td2m", "d2m", "TD2", "Td2"],
         "relative_humidity_pc": ["rh2m", "RH2", "RH"],
@@ -227,9 +228,11 @@ MODEL_VAR_MAP = {
         "rainfall_24h_rrrr": ["rain", "rainnc", "RAINNC", "rainc", "RAINC", "tp", "precip"],
         "rainfall_last_mm": ["rain", "rainnc", "RAINNC", "rainc", "RAINC"],
         "cloud_cover_oktas_m": ["clflo", "clfmi", "clfhi", "TCDC", "tcc", "CLDTOT"],
-        "temp_max_c_txtxtx": ["T2MAX", "TMAX", "t2m", "T2"],
-        "temp_min_c_tntntn": ["T2MIN", "TMIN", "t2m", "T2"],
-        "temp_wetbulb_c": ["wbpt"],
+        # Tidak di NC asim — biarkan kosong (NaN) sampai ada field terpisah
+        "temp_max_c_txtxtx": ["T2MAX", "TMAX"],
+        "temp_min_c_tntntn": ["T2MIN", "TMIN"],
+        "temp_wetbulb_c": ["wbpt", "TW"],
+        "visibility_vv": ["vis", "VIS"],
     },
     "InaCAWO": {
         "temp_drybulb_c_tttttt": ["T2", "t2m"],
@@ -259,3 +262,20 @@ MODEL_VAR_MAP = {
         "cloud_cover_oktas_m": ["tcc"],
     },
 }
+
+# Parameter yang punya kandidat var NC di MODEL_VAR_MAP (bukan jaminan file berisi field itu).
+# InaNWP asim nyata: suhu hanya t2m — max/min/wetbulb/vis tidak tersedia.
+INANWP_ASIM_PARAMS = [
+    "temp_drybulb_c_tttttt",
+    "temp_dewpoint_c_tdtdtd",
+    "relative_humidity_pc",
+    "pressure_qff_mb_derived",
+    "pressure_qfe_mb_derived",
+    "pressure_reading_mb",
+    "wind_speed_ff",
+    "wind_dir_deg_dd",
+    "rainfall_6h_rrr",
+    "rainfall_24h_rrrr",
+    "rainfall_last_mm",
+    "cloud_cover_oktas_m",
+]

@@ -57,7 +57,10 @@ def get_methodology() -> dict:
         "qc": HARP_QC,
         "python_equivalence": HARP_PYTHON_NOTE,
         "data_sources": {
-            "InaNWP": "NetCDF real (*-asim.nc, crop 2D via CDO/ncks)",
+            "InaNWP": (
+                "NetCDF real (*-d01-asim.nc, crop 2D). Field suhu hanya t2m — "
+                "suhu maks/min/bola basah/visibility tidak ada di file (bukan fallback ke t2m)."
+            ),
             "InaCAWO": "NC belum tersedia",
             "GFS": "NC belum tersedia",
             "IFS": "NC belum tersedia",
