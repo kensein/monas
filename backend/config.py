@@ -2,11 +2,29 @@ import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-try:
-    from dotenv import load_dotenv
-    load_dotenv(BASE_DIR / ".env", override=True)
-except ImportError:
-    pass
+
+
+def _load_env_file(path: Path) -> None:
+    """Parse KEY=VALUE from .env without python-dotenv (tidak ada di requirements)."""
+    if not path.is_file():
+        return
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if not key:
+            continue
+        val = val.strip().strip('"').strip("'")
+        os.environ[key] = val
+
+
+_load_env_file(BASE_DIR / ".env")
 DATA_DIR = BASE_DIR / "data"
 NC_DIR = DATA_DIR / "nc"
 OBS_DIR = DATA_DIR / "obs"

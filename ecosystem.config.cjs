@@ -4,7 +4,29 @@
  * Mode produksi: SERVE_READONLY — hanya baca artifact dari PC/HPC.
  * Deploy path: /var/www/monas
  * Start:  pm2 startOrReload ecosystem.config.cjs
+ * Setelah edit .env: pm2 startOrReload ecosystem.config.cjs && pm2 restart monas-api --update-env
  */
+const fs = require("fs");
+const path = require("path");
+
+function readDotEnv(file) {
+  const out = {};
+  try {
+    const text = fs.readFileSync(path.resolve(__dirname, file), "utf8");
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith("#") || !line.includes("=")) continue;
+      const i = line.indexOf("=");
+      const k = line.slice(0, i).trim();
+      const v = line.slice(i + 1).trim().replace(/^['"]|['"]$/g, "");
+      if (k) out[k] = v;
+    }
+  } catch (_) { /* .env opsional */ }
+  return out;
+}
+
+const fileEnv = readDotEnv(".env");
+
 module.exports = {
   apps: [
     {
@@ -36,6 +58,7 @@ module.exports = {
         AUTO_SYNC_OBS: "false",
         DISABLE_STARTUP_PIPELINE: "true",
         DATA_DIR: "./data",
+        CARTO_API_KEY: fileEnv.CARTO_API_KEY || process.env.CARTO_API_KEY || "",
       },
     },
     {
