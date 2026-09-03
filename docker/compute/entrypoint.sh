@@ -14,7 +14,8 @@ export SERVE_READONLY="${SERVE_READONLY:-false}"
 export OFFLINE_OBS_MODE="${OFFLINE_OBS_MODE:-true}"
 export USE_LOCAL_OBS_JSON="${USE_LOCAL_OBS_JSON:-true}"
 export USE_DUMMY_MODELS="${USE_DUMMY_MODELS:-false}"
-export PARALLEL_VERIFY="${PARALLEL_VERIFY:-true}"
+# Serial default → live progress log di Docker
+export PARALLEL_VERIFY="${PARALLEL_VERIFY:-false}"
 export PARALLEL_BACKEND="${PARALLEL_BACKEND:-process}"
 export PARALLEL_WORKERS="${PARALLEL_WORKERS:-4}"
 # Docker + host lama: OpenBLAS default 16 thread → pthread_create Operation not permitted
@@ -29,6 +30,10 @@ export IFS_NC_PATH="${IFS_NC_PATH:-/data/nc}"
 export OBS_EXPORT_DIR="${OBS_EXPORT_DIR:-/data/obs}"
 export LITBANGWEB_OBS_DIR="${LITBANGWEB_OBS_DIR:-/data/obs}"
 export ARTIFACTS_DIR="${ARTIFACTS_DIR:-/app/data/artifacts}"
+export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
+export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+# Batasi berapa run pending diproses (kosong/0 = semua). Harian cukup 1–2 terbaru.
+export VERIFY_MAX_RUNS="${VERIFY_MAX_RUNS:-}"
 
 mkdir -p /app/data /app/logs "$ARTIFACTS_DIR"
 

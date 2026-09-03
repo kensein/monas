@@ -53,7 +53,14 @@ def ingest_nc_from_path(
     params = list(VERIFY_PARAMETERS.keys())
 
     report(40, "Interpolasi grid → titik stasiun (lazy read)...")
-    fcst_df = read_point_forecast(nc_path, model, stations, params)
+
+    def _ingest_progress(p: float, msg: str) -> None:
+        mapped = 40 + max(0.0, min(p, 78.0) - 40.0) / 38.0 * 39.0
+        report(mapped, msg)
+
+    fcst_df = read_point_forecast(
+        nc_path, model, stations, params, progress_cb=_ingest_progress,
+    )
 
     report(80, f"Menyimpan {len(fcst_df)} records forecast...")
     saved = save_forecasts(fcst_df)
