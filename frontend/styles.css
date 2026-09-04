@@ -222,12 +222,6 @@ footer.site-footer {
 }
 footer.site-footer code { font-size: 0.72rem; background: var(--accent-light); padding: 0.1rem 0.3rem; border-radius: 3px; }
 
-.hint-chart {
-  font-size: 0.82rem;
-  color: var(--muted);
-  margin: -0.5rem 0 0.5rem;
-}
-
 .chart-toolbar {
   display: flex;
   gap: 0.35rem;

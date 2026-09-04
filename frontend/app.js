@@ -623,7 +623,6 @@ function renderStationFromCache() {
     }
 
     let html = `<p class="lt-note">${inits.length} init cycle · ${obsPts.length}+ titik obs · ${flat.length} titik fcst · ${formatTimeWIB(data.date_from)} → ${formatTimeWIB(data.date_to)}</p>`;
-    html += `<p class="lt-note">Warna = model (legend). Bedakan init: <strong>solid+tebal = terbaru</strong>, putus-putus + marker beda (□◇△) = lebih lama. Hover = tanggal init. Scroll/drag = zoom.</p>`;
     html += '<div class="table-scroll"><table class="station-ts-table"><thead><tr><th>Valid (WIB)</th><th>Init</th><th>Model</th><th>Lead</th><th>Fcst</th><th>Obs</th><th>Err</th></tr></thead><tbody>';
     const tableRows = flat.slice(-200);
     tableRows.forEach(r => {
