@@ -45,6 +45,8 @@ let modelSources = { InaNWP: 'real', InaCAWO: 'dummy', GFS: 'dummy', IFS: 'dummy
 let cartoApiKey = '';
 let mapBulkCache = { key: '', data: null };
 let stationDetailCache = { key: '', data: null };
+let leadPlayTimer = null;
+const LEAD_PLAY_MS = 800;
 
 async function api(path, opts = {}) {
   const res = await fetch(`${API}${path}`, opts);
@@ -297,6 +299,86 @@ async function loadPipelineStatus() {
 function updateSidebarForTab(tab) {
   const leadSec = document.getElementById('leadTimeSection');
   if (leadSec) leadSec.style.display = (tab === 'overview' || tab === 'map') ? '' : 'none';
+  if (tab !== 'overview' && tab !== 'map') stopLeadPlayback();
+}
+
+function leadSlider() { return document.getElementById('leadTime'); }
+
+function getLeadStep() {
+  const el = leadSlider();
+  const step = Number(el?.step);
+  return Number.isFinite(step) && step > 0 ? step : 3;
+}
+
+function applyLeadTime(hours, { refresh = true } = {}) {
+  const el = leadSlider();
+  if (!el) return;
+  const min = +el.min || 0;
+  const max = +el.max || maxLeadTime;
+  const step = getLeadStep();
+  let h = Math.round(+hours / step) * step;
+  h = Math.min(max, Math.max(min, h));
+  el.value = String(h);
+  const label = document.getElementById('leadTimeLabel');
+  if (label) label.textContent = formatLeadTime(h);
+  if (!refresh) return;
+  const tab = document.querySelector('.tab.active')?.dataset.tab;
+  if (tab === 'map') renderMapFromCache();
+  else if (tab === 'overview') loadOverview();
+}
+
+function stepLeadTime(dir) {
+  const el = leadSlider();
+  if (!el) return false;
+  const step = getLeadStep();
+  const next = +el.value + dir * step;
+  const min = +el.min || 0;
+  const max = +el.max || maxLeadTime;
+  if (next < min || next > max) return false;
+  applyLeadTime(next);
+  return true;
+}
+
+function isLeadPlaying() { return leadPlayTimer != null; }
+
+function stopLeadPlayback() {
+  if (leadPlayTimer != null) {
+    clearInterval(leadPlayTimer);
+    leadPlayTimer = null;
+  }
+  const btn = document.getElementById('leadPlay');
+  if (btn) {
+    btn.textContent = '▶';
+    btn.title = 'Putar lead time';
+    btn.classList.remove('playing');
+    btn.setAttribute('aria-pressed', 'false');
+  }
+}
+
+function startLeadPlayback() {
+  stopLeadPlayback();
+  const btn = document.getElementById('leadPlay');
+  if (btn) {
+    btn.textContent = '⏸';
+    btn.title = 'Jeda';
+    btn.classList.add('playing');
+    btn.setAttribute('aria-pressed', 'true');
+  }
+  leadPlayTimer = setInterval(() => {
+    const el = leadSlider();
+    if (!el) { stopLeadPlayback(); return; }
+    const step = getLeadStep();
+    const max = +el.max || maxLeadTime;
+    const min = +el.min || 0;
+    let next = +el.value + step;
+    if (next > max) next = min; // loop D+0 → D+7
+    applyLeadTime(next);
+  }, LEAD_PLAY_MS);
+}
+
+function toggleLeadPlayback() {
+  if (isLeadPlaying()) stopLeadPlayback();
+  else startLeadPlayback();
 }
 
 function bindEvents() {
@@ -322,11 +404,18 @@ function bindEvents() {
     refreshAll();
   }));
   document.getElementById('leadTime').addEventListener('input', () => {
-    document.getElementById('leadTimeLabel').textContent = formatLeadTime(+document.getElementById('leadTime').value);
-    const tab = document.querySelector('.tab.active')?.dataset.tab;
-    if (tab === 'map') renderMapFromCache();
-    else if (tab === 'overview') loadOverview();
+    stopLeadPlayback();
+    applyLeadTime(+document.getElementById('leadTime').value);
   });
+  document.getElementById('leadPrev')?.addEventListener('click', () => {
+    stopLeadPlayback();
+    stepLeadTime(-1);
+  });
+  document.getElementById('leadNext')?.addEventListener('click', () => {
+    stopLeadPlayback();
+    stepLeadTime(1);
+  });
+  document.getElementById('leadPlay')?.addEventListener('click', () => toggleLeadPlayback());
   document.getElementById('stationRangeMonths')?.addEventListener('change', () => {
     stationDetailCache.key = '';
     loadStationDetail();

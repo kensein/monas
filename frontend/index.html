@@ -30,7 +30,14 @@
       <section id="leadTimeSection">
         <h3>Lead Time</h3>
         <input type="range" id="leadTime" min="0" max="168" step="3" value="12" />
-        <span id="leadTimeLabel">D+0.5 (12 jam)</span>
+        <div class="lead-time-meta">
+          <span id="leadTimeLabel">D+0.5 (12 jam)</span>
+          <div class="lead-time-controls" role="group" aria-label="Kontrol lead time">
+            <button type="button" id="leadPrev" class="lead-btn" title="Lead sebelumnya">‹</button>
+            <button type="button" id="leadPlay" class="lead-btn lead-play" title="Putar lead time">▶</button>
+            <button type="button" id="leadNext" class="lead-btn" title="Lead berikutnya">›</button>
+          </div>
+        </div>
       </section>
 
       <section>
