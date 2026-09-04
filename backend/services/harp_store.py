@@ -205,9 +205,13 @@ def _iter_obs_rows(path: Path, params: list[str]):
             if v is None or v == "" or v == "-":
                 continue
             try:
-                vals[p] = float(v)
+                fv = float(v)
             except (TypeError, ValueError):
                 continue
+            from backend.services.obs_qc import is_obs_sentinel
+            if is_obs_sentinel(fv):
+                continue
+            vals[p] = fv
         if vals:
             yield sid, _parse_dt(vt), vals
 
@@ -354,6 +358,8 @@ class ObsCube:
 
     def slice_at(self, when: datetime, param: str) -> np.ndarray:
         """Obs for all stations at hour `when` → float32 [n_station] (NaN missing)."""
+        from backend.services.obs_qc import mask_obs_sentinels
+
         month = when.strftime("%Y%m")
         loaded = self._load(month)
         out = np.full(len(self._sids), np.nan, dtype=F32)
@@ -363,9 +369,12 @@ class ObsCube:
         hi = _hour_index(when, _parse_dt(meta["month_start"]))
         if hi < 0 or hi >= meta["n_hour"]:
             return out
-        return cube[hi, :, self._pidx[param]]
+        raw = cube[hi, :, self._pidx[param]]
+        return mask_obs_sentinels(raw).astype(F32)
 
     def series(self, station_id: str, param: str, start: datetime, end: datetime) -> list[tuple[str, float]]:
+        from backend.services.obs_qc import is_obs_sentinel
+
         si = self._sidx.get(str(station_id))
         if si is None:
             return []
@@ -385,7 +394,10 @@ class ObsCube:
                 for hi in idx:
                     t = ms + timedelta(hours=int(hi))
                     if start <= t <= end:
-                        out.append((iso_z(t), float(col[hi])))
+                        v = float(col[hi])
+                        if is_obs_sentinel(v):
+                            continue
+                        out.append((iso_z(t), v))
             cur = (cur.replace(day=28) + timedelta(days=4)).replace(day=1)
         return out
 
@@ -709,10 +721,13 @@ def map_bulk(model: str, parameter: str, init_time: str | None = None) -> dict[s
     sids = rd.meta["station_ids"]
     records: list[dict[str, Any]] = []
     leads: list[int] = []
+    from backend.services.obs_qc import OBS_SENTINEL_ABS_MIN
+
     for li, lt in enumerate(rd.meta["lead_times"]):
         f = rd.fcst[pi, li]
         o = rd.obs[pi, li]
-        ok = ~np.isnan(f) & ~np.isnan(o)
+        # Skip NaN + sentinel 8888/9999 already baked into older run cubes
+        ok = ~np.isnan(f) & ~np.isnan(o) & (np.abs(o) < OBS_SENTINEL_ABS_MIN)
         if not ok.any():
             continue
         leads.append(int(lt))
@@ -773,8 +788,9 @@ def station_series(
         e = entries.setdefault(vt, {"valid_time": vt, "lead_time": int(lead_time)})
         # beberapa init untuk valid_time sama → init terbaru menang (runs sudah terurut desc)
         e.setdefault(rd.meta["model"], float(v))
+        from backend.services.obs_qc import is_obs_sentinel
         ob = rd.obs[pi, li, si]
-        if "obs" not in e and not np.isnan(ob):
+        if "obs" not in e and not np.isnan(ob) and not is_obs_sentinel(ob):
             e["obs"] = float(ob)
     return [entries[k] for k in sorted(entries)]
 
@@ -827,7 +843,8 @@ def station_series_by_init(
                 "lead_time": int(lt),
                 "fcst": float(v),
             }
-            if not np.isnan(ob):
+            from backend.services.obs_qc import is_obs_sentinel
+            if not np.isnan(ob) and not is_obs_sentinel(ob):
                 pt["obs"] = float(ob)
             points.append(pt)
         if points:

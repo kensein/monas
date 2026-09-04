@@ -22,7 +22,7 @@ HARP_WORKFLOW = [
     {"step": 1, "name": "Read FCST", "detail": "Baca NetCDF model (harpIO read_forecast), interpolasi grid → titik stasiun sinoptik."},
     {"step": 2, "name": "Read OBS", "detail": "Observasi sinoptik BMKG (POST export API v21), format titik per stasiun & valid time."},
     {"step": 3, "name": "Join", "detail": "Gabungkan fcst & obs pada station_id + valid_time (inner join, harpPoint join_to_fcst). Hanya pasangan lengkap yang dipakai."},
-    {"step": 4, "name": "QC", "detail": "Buang outlier jika |error| > 4σ (check_obs_against_fcst)."},
+    {"step": 4, "name": "QC", "detail": "Buang sentinel obs BMKG (|nilai| ≥ 8888 / 9999) lalu outlier |error| > 4σ (check_obs_against_fcst)."},
     {"step": 5, "name": "det_verify", "detail": "Hitung skor deterministik per parameter & lead time (paired: fcst & obs harus ada)."},
     {"step": 6, "name": "common_cases", "detail": "Perbandingan adil antar model: hanya kasus yang ada di semua model (ranking)."},
 ]
@@ -36,7 +36,9 @@ HARP_SCORES = [
 ]
 
 HARP_QC = (
-    "Outlier dibuang jika |e| > 4σ. Arah angin: error melingkar (circular). "
+    "Sentinel obs BMKG (8888, 9999, |x| ≥ 8888) dibuang sebagai missing — "
+    "bukan di-set 0 (itu bias untuk hujan). "
+    "Lalu outlier |e| > 4σ dibuang. Arah angin: error melingkar (circular). "
     "Lead time D+0 (analysis) s/d D+7 (168 jam). "
     "Perhitungan paired: jika fcst atau obs hilang untuk (station, valid_time), baris itu tidak masuk skor."
 )
