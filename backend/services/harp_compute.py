@@ -135,10 +135,12 @@ def compute_run(
     prog(45, f"Forecast cube: {fcst.shape} ({int(np.sum(~np.isnan(fcst)))} nilai), {len(leads)} lead")
 
     obs_cube = np.full_like(fcst, np.nan)
+    from backend.services.obs_qc import mask_obs_sentinels
+
     for li, lt in enumerate(leads):
         vt = init_dt + timedelta(hours=int(lt))
         for pi, p in enumerate(params):
-            obs_cube[pi, li] = obs.slice_at(vt, p)
+            obs_cube[pi, li] = mask_obs_sentinels(obs.slice_at(vt, p)).astype(hs.F32)
     n_pairs = int(np.sum(~np.isnan(fcst) & ~np.isnan(obs_cube)))
     prog(55, f"Pasangan fcst↔obs: {n_pairs}")
 

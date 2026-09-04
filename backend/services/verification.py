@@ -49,6 +49,11 @@ def check_obs_against_fcst(
     num_sd: float = 4.0,
     circular: bool = False,
 ) -> pd.DataFrame:
+    from backend.services.obs_qc import drop_obs_sentinels
+
+    if df.empty:
+        return df
+    df = drop_obs_sentinels(df, col=obs_col)
     if df.empty:
         return df
     err = _circular_error(df[obs_col].values, df[fcst_col].values) if circular else (df[fcst_col] - df[obs_col])
@@ -147,6 +152,7 @@ def build_verification_pairs(
     circular: bool = False,
 ) -> pd.DataFrame:
     """Join forecast to observations (HARP join_to_fcst)."""
+    from backend.services.obs_qc import drop_obs_sentinels, sanitize_obs_value
     from backend.services.time_utils import normalize_valid_time
 
     keys = ["station_id", "valid_time"]
@@ -154,6 +160,9 @@ def build_verification_pairs(
     fcst_sub = fcst_df.copy()
     obs_sub["valid_time"] = obs_sub["valid_time"].map(normalize_valid_time)
     fcst_sub["valid_time"] = fcst_sub["valid_time"].map(normalize_valid_time)
+    # Sentinel BMKG (8888/9999) → NaN sebelum join
+    obs_sub["value"] = obs_sub["value"].map(sanitize_obs_value)
+    obs_sub = obs_sub.dropna(subset=["value"])
     merged = fcst_sub.merge(
         obs_sub.rename(columns={"value": "obs"}),
         on=keys,
@@ -164,5 +173,6 @@ def build_verification_pairs(
         merged = merged.rename(columns={"forecast": "fcst"})
 
     merged = merged.dropna(subset=["fcst", "obs"])
+    merged = drop_obs_sentinels(merged, col="obs")
     merged = check_obs_against_fcst(merged, circular=circular)
     return merged

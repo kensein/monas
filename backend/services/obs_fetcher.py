@@ -199,6 +199,9 @@ def normalize_obs_records(records: list[Any]) -> pd.DataFrame:
                 fval = float(val)
             except (TypeError, ValueError):
                 continue
+            from backend.services.obs_qc import is_obs_sentinel
+            if is_obs_sentinel(fval):
+                continue
             rows.append({
                 "station_id": station_id,
                 "valid_time": str(valid_time),
