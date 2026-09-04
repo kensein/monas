@@ -70,8 +70,19 @@
       </div>
 
       <div id="scores" class="panel">
+        <div class="scores-toolbar">
+          <label class="scores-metric-label">Metrik
+            <select id="scoreMetric">
+              <option value="rmse" selected>RMSE</option>
+              <option value="mae">MAE</option>
+              <option value="bias">Bias</option>
+              <option value="stde">stde</option>
+              <option value="correlation">Correlation (r)</option>
+            </select>
+          </label>
+        </div>
         <div id="scoreChart" class="chart"></div>
-        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail (RMSE, Bias, MAE, r, N).</div>
+        <div id="scoreDetail" class="detail-box">Klik titik pada grafik untuk melihat angka detail (semua metrik + N).</div>
       </div>
 
       <div id="map" class="panel">
