@@ -152,17 +152,34 @@ async function loadPublicConfig() {
   }
 }
 
+const SCORE_METRICS = {
+  rmse: { label: 'RMSE', lowerBetter: true },
+  mae: { label: 'MAE', lowerBetter: true },
+  bias: { label: 'Bias', lowerBetter: true },
+  stde: { label: 'stde', lowerBetter: true },
+  correlation: { label: 'Correlation (r)', lowerBetter: false },
+};
+
+function selectedScoreMetric() {
+  const el = document.getElementById('scoreMetric');
+  const v = el?.value || 'rmse';
+  return SCORE_METRICS[v] ? v : 'rmse';
+}
+
 function initCharts() {
   rankingChart = new MonasChart('rankingChart');
   scoreChart = new MonasChart('scoreChart', {
     onClick(hit) {
       if (hit.type !== 'pt' || !hit.extra) return;
       const ex = hit.extra;
+      const metric = selectedScoreMetric();
+      const metricLabel = SCORE_METRICS[metric]?.label || metric;
       document.getElementById('scoreDetail').innerHTML =
         `<strong>${hit.series}</strong> · ${formatLeadTime(+hit.x)}<br>
-         RMSE: <strong>${hit.y.toFixed(4)}</strong> · Bias: ${ex.bias?.toFixed(4)} ·
-         MAE: ${ex.mae?.toFixed(4)} · stde: ${ex.stde?.toFixed(4)} ·
-         r: ${ex.correlation?.toFixed(4)} · N: ${ex.n_cases}`;
+         ${metricLabel}: <strong>${hit.y.toFixed(4)}</strong> ·
+         RMSE: ${ex.rmse?.toFixed(4) ?? '—'} · Bias: ${ex.bias?.toFixed(4) ?? '—'} ·
+         MAE: ${ex.mae?.toFixed(4) ?? '—'} · stde: ${ex.stde?.toFixed(4) ?? '—'} ·
+         r: ${ex.correlation?.toFixed(4) ?? '—'} · N: ${ex.n_cases ?? '—'}`;
     },
   });
   stationChart = new MonasChart('stationChart', { zoomable: true });
@@ -416,6 +433,9 @@ function bindEvents() {
     stepLeadTime(1);
   });
   document.getElementById('leadPlay')?.addEventListener('click', () => toggleLeadPlayback());
+  document.getElementById('scoreMetric')?.addEventListener('change', () => {
+    if (document.querySelector('.tab.active')?.dataset.tab === 'scores') loadScores();
+  });
   document.getElementById('stationRangeMonths')?.addEventListener('change', () => {
     stationDetailCache.key = '';
     loadStationDetail();
@@ -486,8 +506,10 @@ async function loadOverview() {
 }
 
 async function loadScores() {
+  const metric = selectedScoreMetric();
+  const metricLabel = SCORE_METRICS[metric]?.label || metric;
   if (!selectedModels().length) {
-    scoreChart.setLines({ title: 'Centang minimal satu model', xLabel: 'Lead Time (jam)', yLabel: 'RMSE', xNumeric: true, series: [] });
+    scoreChart.setLines({ title: 'Centang minimal satu model', xLabel: 'Lead Time (jam)', yLabel: metricLabel, xNumeric: true, series: [] });
     return;
   }
   const param = document.getElementById('parameter').value;
@@ -498,15 +520,18 @@ async function loadScores() {
       name: m,
       color: MODEL_COLORS[m] || '#00529B',
       x: pts.map(p => p.lead_time),
-      y: pts.map(p => p.rmse),
-      extra: pts.map(p => ({ bias: p.bias, mae: p.mae, n_cases: p.n_cases, correlation: p.correlation, stde: p.stde })),
+      y: pts.map(p => p[metric]),
+      extra: pts.map(p => ({
+        rmse: p.rmse, bias: p.bias, mae: p.mae, n_cases: p.n_cases,
+        correlation: p.correlation, stde: p.stde,
+      })),
     };
   });
 
   scoreChart.setLines({
-    title: `RMSE vs Lead Time (D+0 → D+${maxLeadTime / 24}) — ${paramsMeta[param]?.label}`,
+    title: `${metricLabel} vs Lead Time (D+0 → D+${maxLeadTime / 24}) — ${paramsMeta[param]?.label}`,
     xLabel: 'Lead Time (jam)',
-    yLabel: 'RMSE',
+    yLabel: metricLabel,
     xNumeric: true,
     series,
   });
