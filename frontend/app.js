@@ -66,11 +66,14 @@ function requireModels(emptyHtmlId, emptyMsg) {
   return false;
 }
 
-/** Param tersedia jika ≥1 model tercentang punya field NC-nya (InaNWP asim list). */
+/** Param tersedia jika ≥1 model tercentang punya field NC-nya (InaNWP asim list).
+ *  Jika API belum kirim available_by_model (backend lama / belum restart), jangan kunci UI. */
 function paramAvailableForSelection(param) {
   const models = selectedModels();
   if (!models.length) return true;
-  return models.some(m => (paramsAvailableByModel[m] || []).includes(param));
+  const known = models.filter(m => Array.isArray(paramsAvailableByModel[m]));
+  if (!known.length) return true;
+  return known.some(m => paramsAvailableByModel[m].includes(param));
 }
 
 function refreshParameterOptions() {
