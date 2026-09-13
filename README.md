@@ -1,148 +1,266 @@
-# NWP Verification Dashboard (MONAS)
+# MONAS — NWP Verification Dashboard (HARP)
 
-Dashboard **display-only** — user tidak perlu upload file model.
-Model NC di-sync otomatis dari server **litbangweb**. HARP membaca crop 2D di `/opt/lampp/htdocs/wrf/monas_nc/` (bukan wrfout 12GB).
+Dashboard **display-only** verifikasi titik (harpPoint-style) untuk model NWP BMKG.
+User **tidak** upload NC. Hitung di **litbangweb** (Docker, offline) → artifact **f32** → **webpsi** hanya serve.
 
-**Produksi PSIMKG:** https://psimkg.bmkg.go.id/monas/ — lihat `DEPLOY_MONAS.md`.
+| | |
+|--|--|
+| **Produksi** | https://psimkg.bmkg.go.id/monas/ |
+| **Repo** | https://github.com/kensein/monas |
+| **Stack UI** | FastAPI + static HTML/JS + **Canvas 2D** (bukan React/Plotly) |
+| **Store** | `STORE_BACKEND=f32` (default) — PSIIDN-style float32 + JSON; SQLite legacy opsional |
 
-## Arsitektur
+Dokumen detail: `docs/DEPLOY_LITBANGWEB_WEBPSI.md` · handoff agent: `AGENT_BRIEF.md` · deploy portal: `DEPLOY_MONAS.md`
+
+---
+
+## Arsitektur produksi (saat ini)
 
 ```
-litbangweb server
-├── /opt/lampp/htdocs/wrf/wrfout/*.nc      ← InaNWP penuh (~12GB, lev=19)
-├── /opt/lampp/htdocs/wrf/monas_nc/*.nc    ← crop CDO/ncks 2D (~300MB) untuk HARP
-├── /opt/lampp/htdocs/wrf/monas_obs/       ← obs JSON full-param dari PC
-└── Docker monas-compute (scripts/harp_compute.py):
-      interp → obs (param HARP) → det_verify → f32 store → rsync webpsi
-
-f32 store (PSIIDN-style, tanpa SQLite): manifest.json + runs/<model>/<init>/*.f32 + obs/<bulan>/*.f32
-webpsi API (SERVE_READONLY, STORE_BACKEND=f32) membaca store langsung.
+┌──────────────┐   obs JSON    ┌─────────────────────────────┐
+│  PC BMKG     │ ───────────►  │  litbangweb (tanpa internet) │
+│  fetch BMKG  │   SFTP :3346  │  wrfout/*.nc (~12GB)         │
+│  API sinoptik│               │       │ CDO/ncks crop 2D     │
+└──────────────┘               │       ▼                      │
+                               │  monas_nc/*-asim.nc (~0.3GB) │
+                               │  monas_obs/*.json            │
+                               │       │ docker monas-compute │
+                               │       ▼                      │
+                               │  interp → join → QC → det_verify
+                               │  f32 store + monas_export/   │
+                               └──────────────┬──────────────┘
+                                              │ pull SFTP :3346
+                                              │ (litbangweb TIDAK push ke webpsi:22)
+                                              ▼
+                               ┌─────────────────────────────┐
+                               │  webpsi                      │
+                               │  SERVE_READONLY=true         │
+                               │  Apache + PM2 monas-api/web  │
+                               │  baca f32 → UI /monas/       │
+                               └─────────────────────────────┘
 ```
 
-User hanya melihat hasil verifikasi HARP: **D+0 (analysis)** sampai **D+7** (168 jam).
+### Peran mesin
 
-## Stack
+| Mesin | Jaringan | Tugas |
+|-------|---------|--------|
+| **PC BMKG** | Intranet BMKG | Fetch obs harian → SFTP `monas_obs`; (opsional) build Docker image |
+| **litbangweb** | Offline + Docker | Crop NC → HARP compute → stage `monas_export/` |
+| **webpsi** | Portal publik | `SERVE_READONLY` — API + frontend saja |
 
-| Layer | Teknologi |
-|-------|-----------|
-| Backend | Python **FastAPI** (:8013) |
-| Frontend | Static HTML/JS + **Canvas 2D** (chart & peta) (:3013) |
-| Database | SQLite (`data/nwp_verify.db`) |
-| Verifikasi | Python reimplementasi alur **harpPoint** / **harpIO** |
+> **Jaringan penting:** litbangweb biasanya **tidak** bisa `rsync`/`scp` ke `webpsi:22` (timeout).  
+> Sync artifact = **webpsi atau PC yang pull** dari litbangweb `202.90.199.54:3346` (pola PSIIDN).
 
-**Plot & peta di browser = HTML Canvas 2D** (modul `canvas-charts.js`, `canvas-map.js`), bukan Plotly/Leaflet. Python hanya menghitung skor saat pipeline dan melayani JSON via API. PSIIDN skew-T juga Canvas — pola serupa.
+### Jadwal harian (ringkas)
 
-Modul Canvas:
-- `MonasChart` — bar chart (ranking) & multi-line (scores, detail stasiun)
-- `StationCanvasMap` — tile Carto + titik stasiun satu layer canvas (pan/zoom/klik)
+| Waktu | Mesin | Aksi |
+|-------|-------|------|
+| ~02:00 | PC | `scripts/daily_obs_pc.bat` → JSON + SFTP `monas_obs` |
+| ~04:00 | litbangweb | `crop_inanwp_cdo.sh` → `monas_nc/` |
+| ~04:30 | litbangweb | `litbangweb_daily_compute.sh` (Docker) → f32 + `monas_export/` |
+| ~05:00 | webpsi/PC | `pull_artifacts_from_litbangweb.sh` → `data/artifacts/` → `pm2 restart` |
 
-## Implementasi MONAS (referensi internal)
+Panduan lengkap: **`docs/DEPLOY_LITBANGWEB_WEBPSI.md`**.
 
-| Komponen | Detail |
+Cadangan hitung di PC: `docs/DAILY_PC_WEBPSI_FLOW.md`.
+
+---
+
+## Store f32 (bukan SQLite untuk skor)
+
+```
+data/artifacts/
+├── manifest.json
+├── obs/<YYYYMM>/
+│   ├── index.json
+│   └── values.f32          # [n_jam, n_stasiun, n_param]
+└── runs/<model>/<YYYYMMDDHH>/
+    ├── meta.json
+    ├── fcst.f32            # [n_param, n_lead, n_stasiun]
+    ├── obs.f32             # paired obs, shape sama
+    └── scores.f32          # [n_param, n_lead, 7]
+                            # bias, rmse, mae, stde, corr, n_cases, n_stations
+```
+
+- Satu run ≈ 1–2 MB. UI **tidak** menghitung HARP ulang.
+- `SERVE_READONLY=true` di webpsi: matikan pipeline/scheduler/SFTP inventory.
+- Env: `STORE_BACKEND=f32` (default) · `SERVE_READONLY=true` (webpsi).
+
+---
+
+## Metodologi HARP (point)
+
+Alur: **Read FCST → Read OBS → Join → QC → common_cases → det_verify**
+
+| Skor | Formula |
+|------|---------|
+| Bias | mean(fcst − obs) |
+| RMSE | √mean((fcst − obs)²) |
+| MAE | mean(\|fcst − obs\|) |
+| stde | std(fcst − obs, ddof=1) |
+| Correlation | Pearson(fcst, obs) |
+
+**QC observasi** (`backend/services/obs_qc.py`):
+
+1. Sentinel BMKG **8888 / 9999** (`|nilai| ≥ 8888`) → **buang (NaN)**, jangan set 0  
+2. Lalu outlier **\|error\| > 4σ** (`check_obs_against_fcst`)
+
+**InaNWP asim NC** hanya field permukaan (`t2m`, `td2m`, `rh2m`, …).  
+Suhu max/min / bola basah / visibility **tidak** di-fallback ke `t2m` (nilai palsu). UI menandai param yang tidak ada di NC.
+
+Lead time dashboard: **D+0 … D+7** (0–168 jam, step 3 jam).
+
+---
+
+## Model & parameter
+
+| Model | Status tipikal | Sumber NC |
+|-------|----------------|-----------|
+| **InaNWP** | real | litbangweb `monas_nc/*-asim.nc` (crop dari wrfout) |
+| InaCAWO / GFS / IFS | sering `none` / dummy sampai NC ada | pattern di `backend/config.py` → `MODEL_LOCAL_PATHS` |
+
+Parameter verify: `VERIFY_PARAMETERS` di `backend/config.py`  
+(suhu 2m, Td, RH, QFF/QFE, angin, hujan 6h/24h, awan, …).
+
+---
+
+## UI (tab)
+
+| Tab | Keterangan |
+|-----|------------|
+| Overview & Ranking | Ranking RMSE + KPI |
+| Scores vs Lead Time | Metrik dropdown: RMSE / MAE / Bias / stde / r |
+| Peta Stasiun | Canvas map + klik stasiun (fcst/obs/err) |
+| Metode HARP | Dokumentasi metodologi |
+| Detail Stasiun | Time series per-init; legend = nama model; zoom/pan |
+
+**Lead time** (Overview & Peta): slider + **‹ / ▶ / ›** (prev / play / next).  
+Play: maju tiap ~800 ms, loop; pause saat ganti tab / drag slider.
+
+Frontend: `frontend/` · Canvas: chart + peta (Carto tiles; butuh `CARTO_API_KEY` di `.env` webpsi).
+
+---
+
+## Stack & path penting
+
+| Layer | Teknologi / path |
+|-------|------------------|
+| API | FastAPI `backend/main.py` · port **8013** |
+| Frontend static | `server-static.js` · port **3013** |
+| PM2 | `ecosystem.config.cjs` → `monas-api`, `monas-web` |
+| Compute | `docker/compute/` · `scripts/harp_compute.py` · `backend/services/harp_*.py` |
+| webpsi path | `/var/www/monas` · URL `/monas/` |
+| litbangweb NC | `/opt/lampp/htdocs/wrf/wrfout/` → crop → `.../monas_nc/` |
+| litbangweb obs | `/opt/lampp/htdocs/wrf/monas_obs/` |
+| litbangweb export | `/opt/lampp/htdocs/wrf/monas_export/` |
+
+### Port (hindari bentrok di PSIMKG)
+
+| App | FE | API |
+|-----|----|-----|
+| **MONAS** | **3013** | **8013** |
+| PSIIDN | 3010 | 8010 |
+| … | … | … |
+
+---
+
+## Deploy cepat
+
+### webpsi (setelah `git pull`)
+
+```bash
+cd /var/www/monas
+git pull
+# pastikan .env: SERVE_READONLY=true, STORE_BACKEND=f32, BASE_PATH=/monas, CARTO_API_KEY=...
+pm2 startOrReload ecosystem.config.cjs
+pm2 restart monas-api --update-env
+# hard-refresh browser
+```
+
+Pull artifact dari litbangweb (dari webpsi atau PC hub):
+
+```bash
+bash scripts/pull_artifacts_from_litbangweb.sh
+pm2 restart monas-api
+```
+
+### litbangweb compute
+
+Lihat `docs/DEPLOY_LITBANGWEB_WEBPSI.md` §C–D  
+(crop CDO wajib; jangan HARP-kan wrfout 12GB).
+
+### Dev lokal (PC)
+
+```bash
+cp .env.example .env   # BASE_PATH kosong, SERVE_READONLY=false untuk hitung lokal
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+./start.sh             # atau start.bat di Windows
+```
+
+→ http://localhost:3013
+
+---
+
+## API utama
+
+Prefix produksi: `/monas/api/...` (Apache proxy). Dev: `/api/...`.
+
+| Endpoint | Fungsi |
 |----------|--------|
-| Interpolasi | `RegularGridInterpolator` (Python/scipy) — setara harpIO `transformation=interpolate` |
-| Verifikasi | `backend/services/verification.py` — `det_verify`, `common_cases`, `compute_ranking` |
-| Lead time | 0–168 jam (D+0 … D+7), step 3 jam |
-| Cache | `backend/services/verification_cache.py` |
+| `GET /api/health` | Mode readonly / store backend |
+| `GET /api/parameters` | Meta + `available_by_model` + `unavailable_notes` |
+| `GET /api/models/sources` | real / none / dummy per model |
+| `GET /api/cycles` | Init cycles |
+| `GET /api/verification/scores` | Skor vs lead (semua metrik) |
+| `GET /api/verification/ranking` | Ranking |
+| `GET /api/verification/map` · `.../map/bulk` | Peta stasiun |
+| `GET /api/station/{id}/detail` | Time series stasiun |
+| `GET /api/harp/methodology` | Teks metodologi |
+| `POST /api/pipeline/run` | **Ditolak** jika `SERVE_READONLY` |
 
-## Ranking model (harpPoint det_summary)
+---
 
-Peringkat mengikuti **harpPoint `det_verify()`** untuk variabel kontinu (`thresholds=NULL`):
-
-- Mean **bias, RMSE, MAE, stde** lintas semua parameter × lead time (D+0–D+7)
-- Filter **init cycle** dari sidebar (kosong = init terbaru untuk detail stasiun; ranking agregat semua init)
-- Urutan = **mean RMSE terendah** (#1 = terbaik)
-- MONAS menambahkan **mean korelasi (Pearson)** sebagai pelengkap
-- KPI di tab Overview mengikuti **parameter & lead time** sidebar
-
-**HARP tidak punya skill score generik untuk variabel kontinu.** Skill (Heidke SS, Brier SS, dll.) hanya muncul jika verifikasi **kategorikal** dengan `thresholds=` pada `det_verify()` / `ens_verify()`.
-
-| Konteks | Skor skill HARP |
-|---------|-----------------|
-| `det_verify()` + thresholds | heidke_skill_score, pierce_skill_score, kuiper_skill_score, odds_ratio_skill_score, equitable_threat_score, … |
-| `ens_verify()` + thresholds | brier_skill_score (vs klimatologi), fair_brier_score, roc_area, CRPS, … |
-
-## Cache & pipeline (pola PSIIDN)
-
-Semua kalkulasi verifikasi dijalankan **saat pipeline** (bukan saat buka website). Hasil disimpan di SQLite:
-
-| Tabel | Isi |
-|-------|-----|
-| `verification_scores` | Skor agregat per model × param × lead × init |
-| `verification_station_scores` | Skor per stasiun (peta kinerja BMKG) |
-| `ranking_cache` | Peringkat pre-compute |
-| `station_series_cache` | Time series ringan untuk Detail Stasiun |
-
-Dashboard **hanya membaca cache**.
-
-**Deploy produksi (disarankan):**
-- PC: fetch obs harian → SFTP litbangweb `monas_obs` (`scripts/daily_obs_pc.bat`)
-- litbangweb: Docker `monas-compute` verify + export (`docs/DEPLOY_LITBANGWEB_WEBPSI.md`)
-- webpsi: `SERVE_READONLY` Apache+PM2 tampilkan artifact
-
-**Flow harian detail:** `docs/DEPLOY_LITBANGWEB_WEBPSI.md` · cadangan PC-only: `docs/DAILY_PC_WEBPSI_FLOW.md`
-
-**Detail Stasiun:** time series kalender (Juni → obs terakhir) dengan dropdown 1–12 bulan; gap pada garis model = model tidak running. Lead time sidebar memilih lapisan forecast.
-
-- Backfill otomatis saat startup jika skor ada tapi cache belum terisi
-- Backfill manual (sekali): `python scripts/rebuild_dashboard_cache.py`
-- Export artifact: `python scripts/export_light_artifacts.py`
-- Daily obs PC: `scripts/daily_obs_pc.bat`
-- Build image: `scripts/build_compute_image.bat`
-
-## Retention (rencana produksi)
-
-| Data | Retention |
-|------|-----------|
-| `verification_scores` | Permanent |
-| `verification_station_scores` | Permanent (penting untuk kinerja stasiun) |
-| `forecasts` mentah | 14–30 hari setelah verifikasi |
-| `observations` | Rolling ~18 bulan |
-| NC mirror di server | ~12 minggu hot; arsip penuh di litbangweb |
-
-Estimasi DB: ~5 GB/tahun (dominan `verification_station_scores`).
-
-## Deploy
-
-| Target | Dokumen |
-|--------|---------|
-| PSIMKG | `DEPLOY_MONAS.md` |
-| litbangweb | `deploy_litbangweb.sh` |
-| PC dev lokal | `SETUP_LOCAL.md` |
-
-## Port
-
-| Service | Port |
-|---------|------|
-| Frontend | **3013** |
-| API | **8013** |
-
-## Kenapa Cloud Agent tidak bisa akses `C:\` lokal?
-
-| Agent | Berjalan di | Akses file lokal |
-|-------|-------------|------------------|
-| **Cloud Agent** | VM Linux remote Cursor | Tidak bisa `C:\Users\...` |
-| **Local Agent** | Komputer Anda langsung | Bisa akses file lokal |
-
-## Fetch Observasi (BMKG API POST)
-
-Token auto-refresh ~47 jam.
+## Observasi BMKG
 
 ```
-POST /api/v21/user/session/login
-POST /api/v21/export/observation/by-station/query  (parameter_names: ["*"])
+POST .../api/v21/user/session/login
+POST .../api/v21/export/observation/by-station/query
+     parameter_names: ["*"], chunk ≤ ~4 hari
 ```
 
-## API
+Kredensial di `.env` (`BMKG_USERNAME` / `BMKG_PASSWORD`).  
+Hanya dari **intranet BMKG** (Cloudflare memblokir publik).
 
-- `GET /api/pipeline/status` — status auto-sync
-- `GET /api/pipeline/inventory` — daftar NC di server
-- `GET /api/cycles` — init cycles tersedia (D-0)
-- `GET /api/verification/scores?init_time=...&lead_time=...`
-- `GET /api/verification/ranking`
-- `GET /api/verification/map?model=...&parameter=...&lead_time=...`
-- `GET /api/station/{id}/detail?parameter=...&models=...&init_time=...&lead_time=...`
+Uji di webpsi (jika API reachable):
 
-## Detail Stasiun — performa
+```bash
+.venv/bin/python scripts/fetch_obs_local.py --test-api \
+  --from 2026-09-01T00:00:00Z --to 2026-09-02T23:59:00Z
+```
 
-Tab **Detail Stasiun** memanggil API JSON lalu render **Canvas** di browser. Filter **init cycle** + **lead time** di sidebar. Downsample plot max ~400 titik; tabel 20 baris terakhir.
+---
+
+## Yang belum / backlog (untuk agent berikutnya)
+
+- [ ] NC historis panjang (bulan–tahun) untuk verifikasi stabil + opsi **bias correction** (MBR/MOS) — data InaNWP baru masih pendek
+- [ ] Model real InaCAWO / GFS / IFS (saat ini sering `none`)
+- [ ] Plot N-cases vs lead (seperti harpR) di tab Scores
+- [ ] Bias correction: per lead (± per stasiun) setelah archive cukup; jangan ML dulu
+
+---
+
+## Referensi dokumen
+
+| File | Isi |
+|------|-----|
+| `AGENT_BRIEF.md` | Handoff singkat untuk agent baru |
+| `docs/DEPLOY_LITBANGWEB_WEBPSI.md` | Arsitektur + cron + Docker + pull artifact |
+| `docs/DAILY_PC_WEBPSI_FLOW.md` | Cadangan compute di PC |
+| `docs/OBS_SYNC.md` | Sync observasi |
+| `docs/DESIGN_NWP_VERIFICATION_DASHBOARD.md` | Desain / metodologi awal |
+| `DEPLOY_MONAS.md` | Apache + PM2 di PSIMKG |
+| `.env.example` | Semua env var |
+
+---
+
+*Update arsitektur: 2026-09-13 — PC obs → litbangweb Docker f32 → webpsi SERVE_READONLY.*
